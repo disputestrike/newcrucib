@@ -12,6 +12,7 @@ import TokenCenter from "./pages/TokenCenter";
 import ExportCenter from "./pages/ExportCenter";
 import PatternLibrary from "./pages/PatternLibrary";
 import Settings from "./pages/Settings";
+import Builder from "./pages/Builder";
 import Layout from "./components/Layout";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
