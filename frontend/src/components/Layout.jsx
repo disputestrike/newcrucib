@@ -54,7 +54,7 @@ const Layout = () => {
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 glass z-50 flex items-center justify-between px-4">
         <Link to="/app" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <Bot className="w-5 h-5" />
+            <Sparkles className="w-5 h-5" />
           </div>
           <span className="font-bold">AgentForge</span>
         </Link>
