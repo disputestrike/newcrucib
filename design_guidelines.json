@@ -1,0 +1,159 @@
+{
+  "identity": {
+    "persona": "E1 - The Anti-AI Designer",
+    "archetype": "Electric & Neon (Future, Speed, Disruption)",
+    "vibe": "Mission Control, Tactical, High-Precision, Intelligent",
+    "principles": [
+      "Fusion over Imitation: Mix Swiss precision with Cyberpunk neon.",
+      "Emotion First: The user should feel like a commander of a digital army.",
+      "Content is King: Data is the hero. Visualization is the story.",
+      "Negative Space: Use deep black voids to make the neon pop.",
+      "Contrast: High contrast text for readability in the dark."
+    ]
+  },
+  "typography": {
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weights": ["500", "700"],
+      "tracking": "tight",
+      "usage": "All section titles, hero text, modal headers. DO NOT use Inter for headings."
+    },
+    "body": {
+      "family": "Inter, sans-serif",
+      "weights": ["400", "500"],
+      "usage": "Paragraphs, inputs, data tables."
+    },
+    "code": {
+      "family": "JetBrains Mono, monospace",
+      "usage": "Token IDs, API keys, logs, code snippets."
+    },
+    "installation": "yarn add @fontsource/outfit @fontsource/inter @fontsource/jetbrains-mono"
+  },
+  "colors": {
+    "theme": "dark",
+    "palette": {
+      "background": "0 0% 3%",
+      "foreground": "0 0% 98%",
+      "card": "0 0% 5%",
+      "card_foreground": "0 0% 98%",
+      "popover": "0 0% 5%",
+      "popover_foreground": "0 0% 98%",
+      "primary": "217 91% 60%",
+      "primary_foreground": "0 0% 100%",
+      "secondary": "240 4% 16%",
+      "secondary_foreground": "0 0% 98%",
+      "muted": "240 4% 16%",
+      "muted_foreground": "240 5% 65%",
+      "accent": "240 4% 16%",
+      "accent_foreground": "0 0% 98%",
+      "destructive": "0 84% 60%",
+      "destructive_foreground": "0 0% 98%",
+      "border": "240 4% 16%",
+      "input": "240 4% 16%",
+      "ring": "217 91% 60%",
+      "chart_1": "217 91% 60%",
+      "chart_2": "142 71% 45%",
+      "chart_3": "271 81% 56%",
+      "chart_4": "47 95% 57%",
+      "chart_5": "0 84% 60%"
+    },
+    "special_colors": {
+      "neon_blue": "#3B82F6",
+      "neon_green": "#10B981",
+      "neon_purple": "#8B5CF6",
+      "void_black": "#050505",
+      "glass_border": "rgba(255, 255, 255, 0.1)"
+    }
+  },
+  "layout_strategy": {
+    "grid_system": "Bento Grid (Mode B: High Density)",
+    "spacing": "Generous (p-6, p-8) internally, but tight gaps (gap-4) for dashboard density.",
+    "container_style": "Fluid width with max-w-7xl for main content.",
+    "modes": {
+      "dashboard": "Grid with col-span-1 for stats, col-span-2/3 for charts, col-span-1 for activity feeds.",
+      "marketing": "Asymmetric 'Tetris' grid for features. Overlapping elements."
+    }
+  },
+  "surface_strategies": [
+    {
+      "name": "The Tracing Beam",
+      "usage": "Active Agent Cards, Pricing Plans, Key Features",
+      "implementation": "Animated gradient border using framer-motion or CSS mask-image."
+    },
+    {
+      "name": "Glassmorphism (Crystal)",
+      "usage": "Sidebar, Sticky Header, Modals",
+      "implementation": "bg-black/60 backdrop-blur-xl border-white/10"
+    },
+    {
+      "name": "Grid Borders (Technical)",
+      "usage": "Data Tables, Logs, Footer",
+      "implementation": "border-r border-b border-white/5"
+    }
+  ],
+  "components": {
+    "buttons": {
+      "style": "Sharp or slightly rounded (rounded-md).",
+      "primary": "bg-primary hover:bg-primary/90 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]",
+      "secondary": "bg-secondary hover:bg-secondary/80 text-white border border-white/10"
+    },
+    "cards": {
+      "style": "Flat, dark gray (bg-card), 1px border (border-white/10).",
+      "hover": "border-primary/50 transition-colors duration-300"
+    },
+    "inputs": {
+      "style": "bg-secondary/50 border-white/10 focus:border-primary focus:ring-1 focus:ring-primary"
+    },
+    "charts": {
+      "library": "Recharts (via Shadcn Charts)",
+      "style": "Minimalist, thin lines, gradient fills with low opacity."
+    }
+  },
+  "motion": {
+    "library": "framer-motion",
+    "required_effects": [
+      "Staggered entrance for dashboard widgets",
+      "Tracing beam border for active agents",
+      "Smooth layout transitions (LayoutGroup)"
+    ]
+  },
+  "images": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1764263996468-4d65024b076d?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "alt": "Abstract neural network dark background",
+      "usage": "Hero section background with overlay"
+    },
+    "feature_visuals": [
+      {
+        "url": "https://images.unsplash.com/photo-1762279388956-1c098163a2a8?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Futuristic data flow",
+        "usage": "Agent Orchestration Feature"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1760112783563-514867b4c2ed?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Neon light streaks",
+        "usage": "Speed/Performance Feature"
+      }
+    ],
+    "placeholders": {
+      "user_avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
+      "agent_avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"
+    }
+  },
+  "icons": {
+    "primary_library": "lucide-react",
+    "secondary_library": "@phosphor-icons/react",
+    "usage": "Use Phosphor (Duotone) for feature icons, Lucide for UI controls."
+  },
+  "universal_guidelines": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts. Use grids.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "Every interaction needs micro-animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Subtle grain textures and noise overlays separate good from extraordinary.",
+    "Use 'sonner' for toasts."
+  ],
+  "instructions_to_main_agent": "1. Install fonts: `yarn add @fontsource/outfit @fontsource/inter @fontsource/jetbrains-mono`. 2. Update `tailwind.config.js` with the colors provided. 3. Create a `Layout` component that implements the glassmorphism sidebar and header. 4. Build the Dashboard using the Bento Grid strategy. 5. Use the provided images for the Landing Page."
+}
