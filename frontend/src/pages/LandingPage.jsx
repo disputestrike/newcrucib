@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Bot, Layers, Shield, Rocket, Code, Database, Globe, ChevronRight, Play, ArrowRight, Check, Star, Menu, X, Send, Loader2, Sparkles, MessageSquare } from 'lucide-react';
+import { ChevronDown, Send, Loader2, Sparkles, Play, ArrowRight, Check, Menu, X, Code, Layers, Zap, Globe, Shield, Database } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
 
@@ -9,12 +9,12 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState(null);
   
   // Chat state
-  const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm CrucibAI. Ask me anything - code questions, app ideas, or just say hello!" }
+    { role: 'assistant', content: "Hi! I'm CrucibAI. Describe what you want to build and I'll help you get started." }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}`);
@@ -58,119 +58,118 @@ const LandingPage = () => {
   };
 
   const features = [
-    { icon: Bot, title: 'Multi-Model AI', desc: 'GPT-4o, Claude, Gemini with intelligent auto-selection' },
-    { icon: Zap, title: '< 1 Hour Generation', desc: 'Full-stack apps generated 4x faster than competitors' },
-    { icon: Layers, title: 'RAG & Hybrid Search', desc: 'Context-aware responses with source citation' },
-    { icon: Shield, title: '95/100 Code Quality', desc: '5-layer validation ensures production-ready code' },
-    { icon: Database, title: 'Vector Database', desc: 'Advanced semantic search and knowledge graphs' },
-    { icon: Globe, title: 'One-Click Deploy', desc: 'Railway, Vercel, AWS deployment built-in' }
+    { icon: Code, title: 'Build websites and mobile apps', desc: 'Transform your ideas into fully functional websites and mobile apps with instant deployment, seamless data connections, and powerful scalability.' },
+    { icon: Sparkles, title: 'Build custom agents', desc: 'Create specialized AI agents tailored to your specific use case and workflow requirements.' },
+    { icon: Layers, title: 'Build powerful integrations', desc: 'Connect with any API, database, or third-party service seamlessly.' }
+  ];
+
+  const faqs = [
+    { q: 'What is CrucibAI and how does it work?', a: 'CrucibAI is an AI-powered development platform that transforms your ideas into fully functional applications. Simply describe what you want to build in natural language, and our AI handles the coding, design, and deployment. No programming experience required.' },
+    { q: 'What can I build with CrucibAI?', a: 'You can build websites, web applications, mobile apps, APIs, automation workflows, dashboards, and much more. Our platform supports React, Node.js, Python, and integrates with popular services like Stripe, OpenAI, and databases.' },
+    { q: "How does CrucibAI's pricing work?", a: 'We use a token-based pricing system. You purchase tokens and use them as you build. Start free with 50,000 tokens. Unused tokens never expire. Plans range from $9.99 (100K tokens) to $299.99 (5M tokens).' },
+    { q: 'Do I need coding experience to use CrucibAI?', a: 'No! CrucibAI is designed for everyone. Just describe what you want in plain English, and our AI agents will handle the technical implementation. Of course, developers can also dive into the code if they want more control.' }
   ];
 
   const pricing = [
-    { name: 'Starter', price: 9.99, tokens: '100K', features: ['1-2 projects', 'Basic AI chat', 'Community support'] },
-    { name: 'Pro', price: 49.99, tokens: '500K', features: ['5-10 projects', 'All AI models', 'Priority support'], popular: true },
-    { name: 'Professional', price: 99.99, tokens: '1.2M', features: ['20+ projects', 'RAG system', 'Team features'] },
-    { name: 'Enterprise', price: 299.99, tokens: '5M', features: ['Unlimited projects', 'Custom models', 'SLA guarantee'] }
+    { name: 'Free', icon: '🎁', desc: 'Get started with essential features at no cost', price: 0, features: ['50,000 free tokens', 'Access to all AI models', 'Basic exports', 'Community support'] },
+    { name: 'Standard', icon: '⚡', desc: 'Perfect for first-time builders', price: 17, save: 36, features: ['Everything in Free, plus:', '100,000 tokens/month', 'Priority support', 'All export formats'] },
+    { name: 'Pro', icon: '✨', desc: 'Built for serious creators and brands', price: 167, save: 396, features: ['Everything in Standard, plus:', '1M context window', 'Custom AI agents', 'Team collaboration', 'API access'] }
   ];
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-white text-gray-900">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <span className="text-xl font-bold">CrucibAI</span>
+            <span className="text-2xl font-bold tracking-tight">crucib<span className="text-blue-600">ai</span></span>
           </Link>
           
           <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-gray-400 hover:text-white transition">Features</a>
-            <a href="#agents" className="text-gray-400 hover:text-white transition">Agents</a>
-            <a href="#pricing" className="text-gray-400 hover:text-white transition">Pricing</a>
+            <a href="#features" className="text-gray-600 hover:text-gray-900 transition font-medium">Features</a>
+            <a href="#pricing" className="text-gray-600 hover:text-gray-900 transition font-medium">Pricing</a>
+            <a href="#faq" className="text-gray-600 hover:text-gray-900 transition font-medium">FAQs</a>
           </div>
 
           <div className="hidden md:flex items-center gap-4">
             {user ? (
-              <button onClick={() => navigate('/app')} className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium transition neon-blue" data-testid="go-to-dashboard-btn">
-                Dashboard
+              <button onClick={() => navigate('/app')} className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-full font-medium transition flex items-center gap-2" data-testid="go-to-dashboard-btn">
+                Dashboard <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <>
-                <button onClick={() => navigate('/auth')} className="px-5 py-2.5 text-gray-300 hover:text-white transition" data-testid="login-btn">
-                  Log In
+                <button onClick={() => navigate('/auth')} className="px-5 py-2.5 text-gray-600 hover:text-gray-900 transition font-medium" data-testid="login-btn">
+                  Sign in
                 </button>
-                <button onClick={() => navigate('/auth?mode=register')} className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium transition neon-blue" data-testid="get-started-btn">
-                  Get Started
+                <button onClick={() => navigate('/auth?mode=register')} className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-full font-medium transition flex items-center gap-2" data-testid="get-started-btn">
+                  Get Started <ArrowRight className="w-4 h-4" />
                 </button>
               </>
             )}
           </div>
 
-          <button className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
             {mobileMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
       </nav>
 
       {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-40 bg-black/90 pt-20 px-6 md:hidden">
-          <div className="flex flex-col gap-6">
-            <a href="#features" className="text-xl" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a href="#agents" className="text-xl" onClick={() => setMobileMenuOpen(false)}>Agents</a>
-            <a href="#pricing" className="text-xl" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-            <button onClick={() => { navigate('/auth'); setMobileMenuOpen(false); }} className="w-full py-3 bg-blue-500 rounded-lg font-medium mt-4">
-              Get Started
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed inset-0 z-40 bg-white pt-20 px-6 md:hidden"
+          >
+            <div className="flex flex-col gap-6">
+              <a href="#features" className="text-xl font-medium" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#pricing" className="text-xl font-medium" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+              <a href="#faq" className="text-xl font-medium" onClick={() => setMobileMenuOpen(false)}>FAQs</a>
+              <button onClick={() => { navigate('/auth'); setMobileMenuOpen(false); }} className="w-full py-3 bg-gray-900 text-white rounded-full font-medium mt-4">
+                Get Started
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Hero with Chat */}
-      <section className="relative pt-32 pb-20 px-6">
-        <div className="absolute inset-0 grid-pattern opacity-30"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/20 rounded-full blur-[150px]"></div>
-        
-        <div className="max-w-7xl mx-auto relative">
+      {/* Hero */}
+      <section className="pt-32 pb-20 px-6">
+        <div className="max-w-7xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center max-w-4xl mx-auto"
+            className="text-center max-w-4xl mx-auto mb-16"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-full mb-8">
-              <Sparkles className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-blue-400">Powered by GPT-4o, Claude & Gemini</span>
-            </div>
-            
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              Your AI Development
-              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Powerhouse</span>
+            <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight tracking-tight">
+              Build production-ready apps through conversation
             </h1>
             
-            <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-              Multi-model AI orchestration platform. Chat, generate code, build full-stack apps, and deploy - all powered by the latest AI models.
+            <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto">
+              Chat with AI agents that design, code, and deploy your application from start to finish. No programming experience required.
             </p>
           </motion.div>
 
-          {/* Interactive Chat Box */}
+          {/* Chat Interface */}
           <motion.div 
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.2 }}
             className="max-w-3xl mx-auto"
           >
-            <div className="bg-[#0a0a0a] rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
-              <div className="h-10 bg-[#111] border-b border-white/10 flex items-center gap-2 px-4">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="ml-4 text-xs text-gray-500 mono">CrucibAI Chat - Try it now!</span>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl shadow-gray-200/50 overflow-hidden">
+              {/* Chat Header */}
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                <span className="ml-4 text-sm text-gray-500 font-medium">CrucibAI Chat</span>
               </div>
               
               {/* Chat Messages */}
-              <div className="h-72 overflow-y-auto p-4 space-y-4" data-testid="landing-chat-messages">
+              <div className="h-80 overflow-y-auto p-6 space-y-4 bg-gray-50/50" data-testid="landing-chat-messages">
                 {chatMessages.map((msg, i) => (
                   <motion.div
                     key={i}
@@ -178,17 +177,17 @@ const LandingPage = () => {
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[80%] p-3 rounded-xl ${
+                    <div className={`max-w-[85%] p-4 rounded-2xl ${
                       msg.role === 'user' 
-                        ? 'bg-blue-500 text-white' 
+                        ? 'bg-gray-900 text-white' 
                         : msg.error 
-                          ? 'bg-red-500/20 border border-red-500/30 text-red-300'
-                          : 'bg-white/10 text-gray-200'
+                          ? 'bg-red-50 border border-red-200 text-red-700'
+                          : 'bg-white border border-gray-200 text-gray-800 shadow-sm'
                     }`}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                       {msg.model && (
                         <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                          <Bot className="w-3 h-3" />
+                          <Sparkles className="w-3 h-3" />
                           {msg.model}
                         </p>
                       )}
@@ -197,8 +196,8 @@ const LandingPage = () => {
                 ))}
                 {chatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white/10 p-3 rounded-xl">
-                      <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                    <div className="bg-white border border-gray-200 p-4 rounded-2xl shadow-sm">
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
                     </div>
                   </div>
                 )}
@@ -206,141 +205,139 @@ const LandingPage = () => {
               </div>
               
               {/* Chat Input */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-white/10">
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 bg-white">
                 <div className="flex gap-3">
                   <input
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Ask me anything... try 'write a React component' or 'explain async/await'"
-                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition text-sm"
+                    placeholder="Describe what you want to build..."
+                    className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-sm"
                     data-testid="landing-chat-input"
                   />
                   <button
                     type="submit"
                     disabled={chatLoading || !chatInput.trim()}
-                    className="px-4 py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition flex items-center gap-2"
+                    className="px-5 py-3 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl transition flex items-center gap-2 font-medium"
                     data-testid="landing-chat-send"
                   >
                     {chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 text-center">
-                  Free to try • No sign-up required • Powered by multi-model AI
-                </p>
               </form>
             </div>
-          </motion.div>
             
-          <div className="flex items-center justify-center gap-8 mt-8 text-sm text-gray-500">
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
-              50K free tokens
-            </div>
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
-              No credit card required
-            </div>
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
-              Multi-model AI
-            </div>
-          </div>
+            <p className="text-center text-sm text-gray-500 mt-4">
+              Free to try • No sign-up required • Powered by GPT-4o, Claude & Gemini
+            </p>
+          </motion.div>
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" className="py-20 px-6">
+      {/* What can CrucibAI do */}
+      <section id="features" className="py-24 px-6 bg-gray-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Complete AI Development Platform</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">From chat to full-stack app generation. Everything you need to ship faster.</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">What can CrucibAI do for you?</h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              From concept to deployment, CrucibAI handles every aspect of software development so you can focus on what matters most - your vision!
+            </p>
           </div>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature, i) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="group p-6 bg-[#0a0a0a] rounded-xl border border-white/5 hover:border-blue-500/30 transition-colors"
-              >
-                <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition">
-                  <feature.icon className="w-6 h-6 text-blue-400" />
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div className="space-y-8">
+              {features.map((feature, i) => (
+                <motion.div
+                  key={feature.title}
+                  initial={{ opacity: 0, x: -20 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="flex gap-4"
+                >
+                  <div className="flex-shrink-0 w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center">
+                    <feature.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+                    <p className="text-gray-600 leading-relaxed">{feature.desc}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="relative"
+            >
+              <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl p-8 shadow-2xl">
+                <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
+                  <div className="h-8 bg-gray-100 flex items-center gap-2 px-4">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                  </div>
+                  <div className="p-4 bg-gray-50">
+                    <div className="space-y-3">
+                      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                      <div className="h-20 bg-blue-100 rounded-lg mt-4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                <p className="text-gray-400">{feature.desc}</p>
-              </motion.div>
-            ))}
+                <div className="absolute -bottom-4 -right-4 bg-white rounded-xl p-4 shadow-xl border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <Check className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Deployed!</p>
+                      <p className="text-xs text-gray-500">app.crucibai.dev</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
 
-      {/* Agent Layers */}
-      <section id="agents" className="py-20 px-6 bg-[#080808]">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">20 Specialized AI Agents</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">Each layer specializes in different aspects of app generation, working in parallel for maximum efficiency.</p>
-          </div>
+      {/* Video Section */}
+      <section className="py-24 px-6">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">PRODUCT VIDEO</p>
+          <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">See CrucibAI in Action</h2>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { layer: 'Planning', agents: ['Planner', 'Requirements', 'Stack Selector'], color: 'blue', icon: Layers },
-              { layer: 'Execution', agents: ['Frontend', 'Backend', 'Database', 'Tests'], color: 'green', icon: Code },
-              { layer: 'Validation', agents: ['Security', 'QA', 'Performance'], color: 'purple', icon: Shield },
-              { layer: 'Deployment', agents: ['Deploy', 'Error Recovery', 'Memory'], color: 'orange', icon: Rocket }
-            ].map((section, i) => (
-              <motion.div
-                key={section.layer}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.15 }}
-                className={`p-6 rounded-xl border ${
-                  section.color === 'blue' ? 'bg-blue-500/5 border-blue-500/20' :
-                  section.color === 'green' ? 'bg-green-500/5 border-green-500/20' :
-                  section.color === 'purple' ? 'bg-purple-500/5 border-purple-500/20' :
-                  'bg-orange-500/5 border-orange-500/20'
-                }`}
-              >
-                <section.icon className={`w-8 h-8 mb-4 ${
-                  section.color === 'blue' ? 'text-blue-400' :
-                  section.color === 'green' ? 'text-green-400' :
-                  section.color === 'purple' ? 'text-purple-400' :
-                  'text-orange-400'
-                }`} />
-                <h3 className="text-xl font-semibold mb-4">{section.layer}</h3>
-                <ul className="space-y-2">
-                  {section.agents.map(agent => (
-                    <li key={agent} className="flex items-center gap-2 text-gray-400">
-                      <div className={`w-2 h-2 rounded-full ${
-                        section.color === 'blue' ? 'bg-blue-400' :
-                        section.color === 'green' ? 'bg-green-400' :
-                        section.color === 'purple' ? 'bg-purple-400' :
-                        'bg-orange-400'
-                      }`}></div>
-                      {agent}
-                    </li>
-                  ))}
-                </ul>
-              </motion.div>
-            ))}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="relative max-w-4xl mx-auto rounded-2xl overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 aspect-video flex items-center justify-center cursor-pointer group"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-purple-600/20"></div>
+            <button className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+              <Play className="w-8 h-8 text-gray-900 ml-1" />
+            </button>
+            <p className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/80 text-sm">Watch how developers build apps in minutes</p>
+          </motion.div>
         </div>
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-20 px-6">
+      <section id="pricing" className="py-24 px-6 bg-gray-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Simple Token-Based Pricing</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">Pay for what you use. No subscriptions, no hidden fees. Unused tokens never expire.</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">Transparent pricing for every builder</h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Choose the plan that fits your building ambitions. From weekend projects to enterprise applications, we've got you covered.
+            </p>
           </div>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {pricing.map((plan, i) => (
               <motion.div
                 key={plan.name}
@@ -348,36 +345,41 @@ const LandingPage = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
-                className={`relative p-6 rounded-xl border transition-all ${
-                  plan.popular 
-                    ? 'bg-blue-500/10 border-blue-500/50 scale-105' 
-                    : 'bg-[#0a0a0a] border-white/10 hover:border-white/20'
+                className={`p-8 rounded-2xl border ${
+                  plan.name === 'Pro' 
+                    ? 'bg-white border-blue-200 shadow-xl shadow-blue-100/50 scale-105' 
+                    : 'bg-white border-gray-200'
                 }`}
               >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-blue-500 rounded-full text-xs font-medium">
-                    Most Popular
-                  </div>
-                )}
-                <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
-                <div className="mb-4">
-                  <span className="text-4xl font-bold">${plan.price}</span>
-                  <span className="text-gray-500"> / {plan.tokens} tokens</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">{plan.icon}</span>
+                  <h3 className="text-xl font-bold">{plan.name}</h3>
                 </div>
-                <ul className="space-y-3 mb-6">
+                <p className="text-gray-600 text-sm mb-6">{plan.desc}</p>
+                
+                <div className="mb-6">
+                  <span className="text-4xl font-bold">${plan.price}</span>
+                  <span className="text-gray-500">/ month</span>
+                  {plan.save && (
+                    <span className="ml-2 text-sm text-green-600 font-medium">Save ${plan.save}</span>
+                  )}
+                </div>
+                
+                <ul className="space-y-3 mb-8">
                   {plan.features.map(feature => (
-                    <li key={feature} className="flex items-center gap-2 text-gray-400">
-                      <Check className="w-4 h-4 text-green-500" />
-                      {feature}
+                    <li key={feature} className="flex items-start gap-2 text-sm">
+                      <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-gray-700">{feature}</span>
                     </li>
                   ))}
                 </ul>
+                
                 <button 
                   onClick={() => navigate(user ? '/app/tokens' : '/auth?mode=register')}
-                  className={`w-full py-3 rounded-lg font-medium transition ${
-                    plan.popular 
-                      ? 'bg-blue-500 hover:bg-blue-600 neon-blue' 
-                      : 'bg-white/10 hover:bg-white/20'
+                  className={`w-full py-3 rounded-xl font-medium transition ${
+                    plan.name === 'Pro' 
+                      ? 'bg-gray-900 hover:bg-gray-800 text-white' 
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
                   }`}
                   data-testid={`pricing-${plan.name.toLowerCase()}-btn`}
                 >
@@ -389,39 +391,109 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* FAQ */}
+      <section id="faq" className="py-24 px-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">FREQUENTLY ASKED QUESTIONS</p>
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight">Curious about CrucibAI?<br />We got you covered</h2>
+          </div>
+          
+          <div className="space-y-4">
+            {faqs.map((faq, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.05 }}
+                className="border-b border-gray-200"
+              >
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full py-6 flex items-center justify-between text-left"
+                  data-testid={`faq-${i}`}
+                >
+                  <span className="text-lg font-semibold pr-8">{faq.q}</span>
+                  <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {openFaq === i && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="pb-6 text-gray-600 leading-relaxed">{faq.a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
-      <section className="py-20 px-6">
+      <section className="py-24 px-6 bg-gray-900 text-white">
         <div className="max-w-4xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="p-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl border border-white/10"
+          <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">Ready to build something amazing?</h2>
+          <p className="text-xl text-gray-400 mb-10">Join thousands of developers shipping faster with CrucibAI.</p>
+          <button 
+            onClick={() => navigate(user ? '/app/projects/new' : '/auth?mode=register')}
+            className="px-8 py-4 bg-white hover:bg-gray-100 text-gray-900 rounded-full font-medium text-lg transition flex items-center gap-2 mx-auto"
+            data-testid="final-cta-btn"
           >
-            <h2 className="text-4xl font-bold mb-4">Ready to Build Something Amazing?</h2>
-            <p className="text-gray-400 mb-8">Join thousands of developers who are shipping faster with CrucibAI.</p>
-            <button 
-              onClick={() => navigate(user ? '/app/projects/new' : '/auth?mode=register')}
-              className="px-8 py-4 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium text-lg transition neon-blue"
-              data-testid="final-cta-btn"
-            >
-              Start Building Free
-            </button>
-          </motion.div>
+            Start Building Free <ArrowRight className="w-5 h-5" />
+          </button>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-6 border-t border-white/10">
+      <footer className="py-16 px-6 bg-white border-t border-gray-100">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <span className="font-bold">CrucibAI</span>
+          <div className="grid md:grid-cols-5 gap-12 mb-12">
+            <div className="md:col-span-2">
+              <span className="text-2xl font-bold tracking-tight">crucib<span className="text-blue-600">ai</span></span>
+              <p className="text-gray-600 mt-4 max-w-sm">
+                Build production-ready apps through conversation. Chat with AI agents that design, code, and deploy your application from start to finish.
+              </p>
             </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Product</h4>
+              <ul className="space-y-3 text-gray-600">
+                <li><a href="#" className="hover:text-gray-900 transition">Build</a></li>
+                <li><a href="#pricing" className="hover:text-gray-900 transition">Pricing</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">Integrations</a></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Solutions</h4>
+              <ul className="space-y-3 text-gray-600">
+                <li><a href="#" className="hover:text-gray-900 transition">Enterprise</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">SMB Owners</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">IT Agencies</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">Product Managers</a></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Company</h4>
+              <ul className="space-y-3 text-gray-600">
+                <li><a href="#" className="hover:text-gray-900 transition">About</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">Careers</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-gray-900 transition">Terms of Service</a></li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="pt-8 border-t border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-gray-500 text-sm">© 2026 CrucibAI. All rights reserved.</p>
+            <p className="text-gray-400 text-sm">Designed and built with 💙 by CrucibAI</p>
           </div>
         </div>
       </footer>
