@@ -1,36 +1,76 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Zap, Bot, Layers, Shield, Rocket, Code, Database, Globe, ChevronRight, Play, ArrowRight, Check, Star, Menu, X } from 'lucide-react';
-import { useAuth } from '../App';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Zap, Bot, Layers, Shield, Rocket, Code, Database, Globe, ChevronRight, Play, ArrowRight, Check, Star, Menu, X, Send, Loader2, Sparkles, MessageSquare } from 'lucide-react';
+import { useAuth, API } from '../App';
+import axios from 'axios';
 
 const LandingPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setMessages] = useState([
+    { role: 'assistant', content: "Hi! I'm CrucibAI. Ask me anything - code questions, app ideas, or just say hello!" }
+  ]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    if (!chatInput.trim() || chatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(`${API}/ai/chat`, {
+        message: userMessage,
+        session_id: sessionId,
+        model: 'auto'
+      }, { headers });
+
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: res.data.response,
+        model: res.data.model_used
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "Sorry, I encountered an error. Please try again.",
+        error: true
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const features = [
-    { icon: Bot, title: '20 AI Agents', desc: 'Specialized agents for every task from planning to deployment' },
+    { icon: Bot, title: 'Multi-Model AI', desc: 'GPT-4o, Claude, Gemini with intelligent auto-selection' },
     { icon: Zap, title: '< 1 Hour Generation', desc: 'Full-stack apps generated 4x faster than competitors' },
-    { icon: Layers, title: 'Multi-Format Export', desc: 'PDF, Excel, Markdown, and more with one click' },
+    { icon: Layers, title: 'RAG & Hybrid Search', desc: 'Context-aware responses with source citation' },
     { icon: Shield, title: '95/100 Code Quality', desc: '5-layer validation ensures production-ready code' },
-    { icon: Database, title: 'Memory System', desc: 'Learns from 10K+ projects for continuous improvement' },
+    { icon: Database, title: 'Vector Database', desc: 'Advanced semantic search and knowledge graphs' },
     { icon: Globe, title: 'One-Click Deploy', desc: 'Railway, Vercel, AWS deployment built-in' }
   ];
 
   const pricing = [
-    { name: 'Starter', price: 9.99, tokens: '100K', features: ['1-2 projects', 'Basic exports', 'Community support'] },
-    { name: 'Pro', price: 49.99, tokens: '500K', features: ['5-10 projects', 'All export formats', 'Priority support'], popular: true },
-    { name: 'Professional', price: 99.99, tokens: '1.2M', features: ['20+ projects', 'Advanced patterns', 'Team features'] },
-    { name: 'Enterprise', price: 299.99, tokens: '5M', features: ['Unlimited projects', 'White-label', 'SLA guarantee'] }
-  ];
-
-  const agents = [
-    { name: 'Planner', layer: 'Planning', color: 'blue' },
-    { name: 'Frontend', layer: 'Execution', color: 'green' },
-    { name: 'Backend', layer: 'Execution', color: 'green' },
-    { name: 'Security', layer: 'Validation', color: 'purple' },
-    { name: 'Deploy', layer: 'Deployment', color: 'orange' }
+    { name: 'Starter', price: 9.99, tokens: '100K', features: ['1-2 projects', 'Basic AI chat', 'Community support'] },
+    { name: 'Pro', price: 49.99, tokens: '500K', features: ['5-10 projects', 'All AI models', 'Priority support'], popular: true },
+    { name: 'Professional', price: 99.99, tokens: '1.2M', features: ['20+ projects', 'RAG system', 'Team features'] },
+    { name: 'Enterprise', price: 299.99, tokens: '5M', features: ['Unlimited projects', 'Custom models', 'SLA guarantee'] }
   ];
 
   return (
@@ -40,9 +80,9 @@ const LandingPage = () => {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6" />
+              <Sparkles className="w-6 h-6" />
             </div>
-            <span className="text-xl font-bold">AgentForge</span>
+            <span className="text-xl font-bold">CrucibAI</span>
           </Link>
           
           <div className="hidden md:flex items-center gap-8">
@@ -88,7 +128,7 @@ const LandingPage = () => {
         </div>
       )}
 
-      {/* Hero */}
+      {/* Hero with Chat */}
       <section className="relative pt-32 pb-20 px-6">
         <div className="absolute inset-0 grid-pattern opacity-30"></div>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/20 rounded-full blur-[150px]"></div>
@@ -100,99 +140,112 @@ const LandingPage = () => {
             className="text-center max-w-4xl mx-auto"
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-full mb-8">
-              <Zap className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-blue-400">Now with 20 specialized AI agents</span>
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <span className="text-sm text-blue-400">Powered by GPT-4o, Claude & Gemini</span>
             </div>
             
             <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              Build Full-Stack Apps in
-              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Under 1 Hour</span>
+              Your AI Development
+              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Powerhouse</span>
             </h1>
             
             <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-              The most advanced AI agent orchestration platform. 20 specialized agents working in parallel to generate, validate, and deploy production-ready applications.
+              Multi-model AI orchestration platform. Chat, generate code, build full-stack apps, and deploy - all powered by the latest AI models.
             </p>
-            
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button 
-                onClick={() => navigate(user ? '/app/projects/new' : '/auth?mode=register')}
-                className="group px-8 py-4 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium text-lg transition-all neon-blue flex items-center gap-2"
-                data-testid="hero-cta-btn"
-              >
-                Start Building Free
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button className="px-8 py-4 border border-white/20 hover:border-white/40 rounded-lg font-medium text-lg transition flex items-center gap-2" data-testid="watch-demo-btn">
-                <Play className="w-5 h-5" />
-                Watch Demo
-              </button>
-            </div>
-            
-            <div className="flex items-center justify-center gap-8 mt-12 text-sm text-gray-500">
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-500" />
-                50K free tokens
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-500" />
-                No credit card required
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-500" />
-                Deploy in minutes
-              </div>
-            </div>
           </motion.div>
 
-          {/* Hero Visual */}
+          {/* Interactive Chat Box */}
           <motion.div 
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="mt-20 relative"
+            className="max-w-3xl mx-auto"
           >
-            <div className="aspect-video max-w-5xl mx-auto bg-[#0a0a0a] rounded-2xl border border-white/10 overflow-hidden">
+            <div className="bg-[#0a0a0a] rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
               <div className="h-10 bg-[#111] border-b border-white/10 flex items-center gap-2 px-4">
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="ml-4 text-xs text-gray-500 mono">AgentForge Dashboard</span>
+                <span className="ml-4 text-xs text-gray-500 mono">CrucibAI Chat - Try it now!</span>
               </div>
-              <div className="p-6">
-                <div className="grid grid-cols-4 gap-4 mb-6">
-                  {agents.map((agent, i) => (
-                    <motion.div 
-                      key={agent.name}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.5 + i * 0.1 }}
-                      className={`p-4 rounded-lg border ${
-                        agent.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30' :
-                        agent.color === 'green' ? 'bg-green-500/10 border-green-500/30' :
-                        agent.color === 'purple' ? 'bg-purple-500/10 border-purple-500/30' :
-                        'bg-orange-500/10 border-orange-500/30'
-                      }`}
-                    >
-                      <Bot className={`w-6 h-6 mb-2 ${
-                        agent.color === 'blue' ? 'text-blue-400' :
-                        agent.color === 'green' ? 'text-green-400' :
-                        agent.color === 'purple' ? 'text-purple-400' :
-                        'text-orange-400'
-                      }`} />
-                      <p className="text-sm font-medium">{agent.name}</p>
-                      <p className="text-xs text-gray-500">{agent.layer}</p>
-                    </motion.div>
-                  ))}
-                </div>
-                <div className="h-32 bg-[#080808] rounded-lg border border-white/5 flex items-center justify-center">
-                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-gray-400">Generating your application...</span>
+              
+              {/* Chat Messages */}
+              <div className="h-72 overflow-y-auto p-4 space-y-4" data-testid="landing-chat-messages">
+                {chatMessages.map((msg, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] p-3 rounded-xl ${
+                      msg.role === 'user' 
+                        ? 'bg-blue-500 text-white' 
+                        : msg.error 
+                          ? 'bg-red-500/20 border border-red-500/30 text-red-300'
+                          : 'bg-white/10 text-gray-200'
+                    }`}>
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      {msg.model && (
+                        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                          <Bot className="w-3 h-3" />
+                          {msg.model}
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white/10 p-3 rounded-xl">
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                    </div>
                   </div>
-                </div>
+                )}
+                <div ref={chatEndRef} />
               </div>
+              
+              {/* Chat Input */}
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-white/10">
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Ask me anything... try 'write a React component' or 'explain async/await'"
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition text-sm"
+                    data-testid="landing-chat-input"
+                  />
+                  <button
+                    type="submit"
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="px-4 py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition flex items-center gap-2"
+                    data-testid="landing-chat-send"
+                  >
+                    {chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  Free to try • No sign-up required • Powered by multi-model AI
+                </p>
+              </form>
             </div>
           </motion.div>
+            
+          <div className="flex items-center justify-center gap-8 mt-8 text-sm text-gray-500">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              50K free tokens
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              No credit card required
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Multi-model AI
+            </div>
+          </div>
         </div>
       </section>
 
@@ -200,8 +253,8 @@ const LandingPage = () => {
       <section id="features" className="py-20 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Everything You Need to Ship Faster</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">Our 20-agent system handles everything from planning to deployment, so you can focus on what matters.</p>
+            <h2 className="text-4xl font-bold mb-4">Complete AI Development Platform</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">From chat to full-stack app generation. Everything you need to ship faster.</p>
           </div>
           
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -229,7 +282,7 @@ const LandingPage = () => {
       <section id="agents" className="py-20 px-6 bg-[#080808]">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">4-Layer Agent Architecture</h2>
+            <h2 className="text-4xl font-bold mb-4">20 Specialized AI Agents</h2>
             <p className="text-gray-400 max-w-2xl mx-auto">Each layer specializes in different aspects of app generation, working in parallel for maximum efficiency.</p>
           </div>
           
@@ -346,7 +399,7 @@ const LandingPage = () => {
             className="p-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl border border-white/10"
           >
             <h2 className="text-4xl font-bold mb-4">Ready to Build Something Amazing?</h2>
-            <p className="text-gray-400 mb-8">Join thousands of developers who are shipping faster with AgentForge.</p>
+            <p className="text-gray-400 mb-8">Join thousands of developers who are shipping faster with CrucibAI.</p>
             <button 
               onClick={() => navigate(user ? '/app/projects/new' : '/auth?mode=register')}
               className="px-8 py-4 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium text-lg transition neon-blue"
@@ -364,11 +417,11 @@ const LandingPage = () => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Bot className="w-5 h-5" />
+                <Sparkles className="w-5 h-5" />
               </div>
-              <span className="font-bold">AgentForge</span>
+              <span className="font-bold">CrucibAI</span>
             </div>
-            <p className="text-gray-500 text-sm">© 2026 AgentForge. All rights reserved.</p>
+            <p className="text-gray-500 text-sm">© 2026 CrucibAI. All rights reserved.</p>
           </div>
         </div>
       </footer>
