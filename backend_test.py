@@ -149,13 +149,13 @@ class AgentForgeAPITester:
         # Test token usage
         self.run_test("Get Token Usage", "GET", "tokens/usage", 200)
         
-        # Test token purchase (simulated)
+        # Test token purchase (simulated) - buy pro bundle for more tokens
         self.run_test(
             "Purchase Tokens",
             "POST",
             "tokens/purchase",
             200,
-            data={"bundle": "starter"}
+            data={"bundle": "pro"}
         )
 
     def test_agent_endpoints(self):
