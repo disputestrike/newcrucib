@@ -238,6 +238,94 @@ class CrucibAITester:
         # Test get patterns
         self.run_test("Get Patterns Library", "GET", "patterns", 200)
 
+    def test_ai_endpoints(self):
+        """Test AI-related endpoints including chat, RAG, and analysis"""
+        print("\n=== TESTING AI ENDPOINTS ===")
+        
+        # Test AI chat without authentication (should work)
+        success, response = self.run_test(
+            "AI Chat (No Auth)",
+            "POST",
+            "ai/chat",
+            200,
+            data={
+                "message": "Hello, can you help me write a simple Python function?",
+                "model": "auto"
+            },
+            auth_required=False
+        )
+        
+        if success and 'session_id' in response:
+            self.session_id = response['session_id']
+            print(f"   Session ID: {self.session_id}")
+            print(f"   Model used: {response.get('model_used', 'Unknown')}")
+            print(f"   Response preview: {response.get('response', '')[:100]}...")
+        
+        # Test AI chat with authentication
+        if self.token:
+            self.run_test(
+                "AI Chat (With Auth)",
+                "POST",
+                "ai/chat",
+                200,
+                data={
+                    "message": "Write a React component for a button",
+                    "session_id": self.session_id,
+                    "model": "gpt-4o"
+                }
+            )
+        
+        # Test chat history
+        if self.session_id:
+            self.run_test(
+                "Get Chat History",
+                "GET",
+                f"ai/chat/history/{self.session_id}",
+                200,
+                auth_required=False
+            )
+        
+        # Test document analysis
+        self.run_test(
+            "Document Analysis",
+            "POST",
+            "ai/analyze",
+            200,
+            data={
+                "content": "This is a sample document about machine learning algorithms. It covers supervised and unsupervised learning techniques.",
+                "doc_type": "text",
+                "task": "summarize"
+            },
+            auth_required=False
+        )
+        
+        # Test RAG query
+        self.run_test(
+            "RAG Query",
+            "POST",
+            "rag/query",
+            200,
+            data={
+                "query": "What are the best practices for React development?",
+                "context": "Frontend development with modern JavaScript frameworks",
+                "top_k": 5
+            },
+            auth_required=False
+        )
+        
+        # Test hybrid search
+        self.run_test(
+            "Hybrid Search",
+            "POST",
+            "search",
+            200,
+            data={
+                "query": "Python web development frameworks",
+                "search_type": "hybrid"
+            },
+            auth_required=False
+        )
+
     def test_export_endpoints(self):
         """Test export-related endpoints"""
         print("\n=== TESTING EXPORT ENDPOINTS ===")
