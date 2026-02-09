@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Eye, EyeOff, Sparkles, Check } from 'lucide-react';
 import { useAuth } from '../App';
 
 const AuthPage = () => {
@@ -38,35 +38,53 @@ const AuthPage = () => {
     }
   };
 
+  const benefits = [
+    'Build full-stack apps in minutes',
+    'Multi-model AI (GPT-4o, Claude, Gemini)',
+    '50,000 free tokens to start',
+    'No credit card required'
+  ];
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative">
-        <div className="absolute inset-0 grid-pattern opacity-30"></div>
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[150px]"></div>
-        
-        <div className="relative z-10 flex flex-col items-center justify-center w-full p-12">
-          <Link to="/" className="flex items-center gap-3 mb-12">
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Sparkles className="w-8 h-8" />
-            </div>
-            <span className="text-3xl font-bold">CrucibAI</span>
+    <div className="min-h-screen bg-white text-gray-900 flex">
+      {/* Left Panel - Benefits */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gray-50 relative">
+        <div className="flex flex-col justify-center w-full p-16">
+          <Link to="/" className="flex items-center gap-2 mb-12">
+            <span className="text-3xl font-bold tracking-tight">crucib<span className="text-blue-600">ai</span></span>
           </Link>
           
-          <h2 className="text-4xl font-bold text-center mb-4">Build faster with AI</h2>
-          <p className="text-gray-400 text-center max-w-md">
-            Multi-model AI orchestration platform. Chat, code, and deploy with GPT-4o, Claude, and Gemini.
+          <h2 className="text-4xl font-bold mb-4 tracking-tight">Start building in seconds</h2>
+          <p className="text-gray-600 text-lg mb-12">
+            Join thousands of developers who are shipping faster with AI-powered development.
           </p>
           
-          <div className="mt-12 grid grid-cols-2 gap-4 max-w-md">
+          <div className="space-y-4">
+            {benefits.map((benefit, i) => (
+              <motion.div
+                key={benefit}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="flex items-center gap-3"
+              >
+                <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                  <Check className="w-4 h-4 text-green-600" />
+                </div>
+                <span className="text-gray-700">{benefit}</span>
+              </motion.div>
+            ))}
+          </div>
+          
+          <div className="mt-16 grid grid-cols-2 gap-6">
             {[
-              { label: 'Projects Generated', value: '50K+' },
+              { label: 'Projects Built', value: '50K+' },
               { label: 'Active Developers', value: '12K+' },
-              { label: 'Code Quality Score', value: '95/100' },
-              { label: 'Avg Generation Time', value: '< 1hr' }
+              { label: 'Avg Build Time', value: '<1 hour' },
+              { label: 'Code Quality', value: '95/100' }
             ].map(stat => (
-              <div key={stat.label} className="p-4 bg-white/5 rounded-lg border border-white/10">
-                <p className="text-2xl font-bold text-blue-400">{stat.value}</p>
+              <div key={stat.label} className="p-4 bg-white rounded-xl border border-gray-200">
+                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 <p className="text-sm text-gray-500">{stat.label}</p>
               </div>
             ))}
@@ -75,47 +93,44 @@ const AuthPage = () => {
       </div>
       
       {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
+          <div className="lg:hidden flex items-center justify-center mb-8">
             <Link to="/" className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <span className="text-xl font-bold">CrucibAI</span>
+              <span className="text-2xl font-bold tracking-tight">crucib<span className="text-blue-600">ai</span></span>
             </Link>
           </div>
           
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">
+            <h1 className="text-3xl font-bold mb-2 tracking-tight">
               {isLogin ? 'Welcome back' : 'Create your account'}
             </h1>
-            <p className="text-gray-400">
+            <p className="text-gray-600">
               {isLogin ? 'Sign in to continue building' : 'Start building with 50K free tokens'}
             </p>
           </div>
           
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm" data-testid="auth-error">
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm" data-testid="auth-error">
               {error}
             </div>
           )}
           
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium mb-2">Name</label>
+                <label className="block text-sm font-medium mb-2 text-gray-700">Name</label>
                 <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                    className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
                     placeholder="Your name"
                     required={!isLogin}
                     data-testid="auth-name-input"
@@ -125,14 +140,14 @@ const AuthPage = () => {
             )}
             
             <div>
-              <label className="block text-sm font-medium mb-2">Email</label>
+              <label className="block text-sm font-medium mb-2 text-gray-700">Email</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
                   placeholder="you@example.com"
                   required
                   data-testid="auth-email-input"
@@ -141,14 +156,14 @@ const AuthPage = () => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium mb-2">Password</label>
+              <label className="block text-sm font-medium mb-2 text-gray-700">Password</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                  className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
                   placeholder="••••••••"
                   required
                   minLength={6}
@@ -157,7 +172,7 @@ const AuthPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -167,7 +182,7 @@ const AuthPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition flex items-center justify-center gap-2 neon-blue"
+              className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-medium transition flex items-center justify-center gap-2"
               data-testid="auth-submit-btn"
             >
               {loading ? (
@@ -181,11 +196,11 @@ const AuthPage = () => {
             </button>
           </form>
           
-          <p className="mt-6 text-center text-gray-400">
+          <p className="mt-8 text-center text-gray-600">
             {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
             <button
               onClick={() => setIsLogin(!isLogin)}
-              className="text-blue-400 hover:text-blue-300 font-medium"
+              className="text-blue-600 hover:text-blue-700 font-medium"
               data-testid="auth-toggle-btn"
             >
               {isLogin ? 'Sign up' : 'Sign in'}
