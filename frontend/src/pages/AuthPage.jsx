@@ -48,9 +48,9 @@ const AuthPage = () => {
         <div className="relative z-10 flex flex-col items-center justify-center w-full p-12">
           <Link to="/" className="flex items-center gap-3 mb-12">
             <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Bot className="w-8 h-8" />
+              <Sparkles className="w-8 h-8" />
             </div>
-            <span className="text-3xl font-bold">AgentForge</span>
+            <span className="text-3xl font-bold">CrucibAI</span>
           </Link>
           
           <h2 className="text-4xl font-bold text-center mb-4">Build faster with AI</h2>
