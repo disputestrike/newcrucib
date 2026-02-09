@@ -56,7 +56,7 @@ const Layout = () => {
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </div>
-          <span className="font-bold">AgentForge</span>
+          <span className="font-bold">CrucibAI</span>
         </Link>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} data-testid="mobile-menu-btn">
           {mobileMenuOpen ? <X /> : <Menu />}
