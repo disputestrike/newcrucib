@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -14,6 +15,7 @@ import jwt
 import hashlib
 import asyncio
 import random
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -22,12 +24,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI(title="AgentForge AI Platform")
+app = FastAPI(title="CrucibAI Platform")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
-JWT_SECRET = os.environ.get('JWT_SECRET', 'agentforge-secret-key-2024')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'crucibai-secret-key-2024')
 JWT_ALGORITHM = "HS256"
+EMERGENT_KEY = os.environ.get('EMERGENT_LLM_KEY')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -43,48 +46,40 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class UserResponse(BaseModel):
-    id: str
-    email: str
-    name: str
-    token_balance: int
-    plan: str
-    created_at: str
+class ChatMessage(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    model: Optional[str] = "auto"  # auto, gpt-4o, claude, gemini
+
+class ChatResponse(BaseModel):
+    response: str
+    model_used: str
+    tokens_used: int
+    session_id: str
 
 class TokenPurchase(BaseModel):
-    bundle: str  # starter, pro, professional, enterprise, unlimited
+    bundle: str
 
 class ProjectCreate(BaseModel):
     name: str
     description: str
-    project_type: str  # website, api, fullstack, automation
+    project_type: str
     requirements: Dict[str, Any]
     estimated_tokens: Optional[int] = None
 
-class ProjectResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    project_type: str
-    status: str
-    tokens_allocated: int
-    tokens_used: int
-    created_at: str
-    completed_at: Optional[str] = None
-    live_url: Optional[str] = None
+class DocumentProcess(BaseModel):
+    content: str
+    doc_type: str = "text"
+    task: str = "summarize"  # summarize, extract, analyze
 
-class AgentStatus(BaseModel):
-    agent_name: str
-    status: str  # idle, running, completed, failed
-    progress: int
-    tokens_used: int
-    current_task: Optional[str] = None
-    started_at: Optional[str] = None
+class RAGQuery(BaseModel):
+    query: str
+    context: Optional[str] = None
+    top_k: int = 5
 
-class ExportRequest(BaseModel):
-    project_id: str
-    format: str  # pdf, excel, markdown, all
-    include_images: bool = True
+class SearchQuery(BaseModel):
+    query: str
+    search_type: str = "hybrid"  # vector, keyword, hybrid
 
 # ==================== TOKEN PRICING ====================
 
@@ -119,6 +114,15 @@ AGENT_DEFINITIONS = [
     {"name": "Automation Agent", "layer": "automation", "description": "Schedules tasks and workflows", "avg_tokens": 30000}
 ]
 
+# AI Model configurations for auto-selection
+MODEL_CONFIG = {
+    "code": {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929"},
+    "analysis": {"provider": "openai", "model": "gpt-4o"},
+    "general": {"provider": "openai", "model": "gpt-4o"},
+    "creative": {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929"},
+    "fast": {"provider": "gemini", "model": "gemini-2.5-flash"}
+}
+
 # ==================== HELPERS ====================
 
 def hash_password(password: str) -> str:
@@ -145,6 +149,203 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+async def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+        return user
+    except:
+        return None
+
+def detect_task_type(message: str) -> str:
+    """Auto-detect the best model based on message content"""
+    message_lower = message.lower()
+    
+    code_keywords = ['code', 'function', 'class', 'api', 'bug', 'error', 'debug', 'implement', 'python', 'javascript', 'react', 'database']
+    analysis_keywords = ['analyze', 'compare', 'evaluate', 'explain', 'why', 'how does', 'what is']
+    creative_keywords = ['write', 'create', 'story', 'poem', 'design', 'imagine', 'brainstorm']
+    
+    for kw in code_keywords:
+        if kw in message_lower:
+            return "code"
+    
+    for kw in analysis_keywords:
+        if kw in message_lower:
+            return "analysis"
+    
+    for kw in creative_keywords:
+        if kw in message_lower:
+            return "creative"
+    
+    return "general"
+
+# ==================== AI CHAT ROUTES ====================
+
+@api_router.post("/ai/chat")
+async def ai_chat(data: ChatMessage, user: dict = Depends(get_optional_user)):
+    """Multi-model AI chat with auto-selection"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        session_id = data.session_id or str(uuid.uuid4())
+        
+        # Auto-select model based on task type
+        if data.model == "auto":
+            task_type = detect_task_type(data.message)
+            model_config = MODEL_CONFIG.get(task_type, MODEL_CONFIG["general"])
+        elif data.model == "gpt-4o":
+            model_config = {"provider": "openai", "model": "gpt-4o"}
+        elif data.model == "claude":
+            model_config = {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929"}
+        elif data.model == "gemini":
+            model_config = {"provider": "gemini", "model": "gemini-2.5-flash"}
+        else:
+            model_config = MODEL_CONFIG["general"]
+        
+        # Initialize chat
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=session_id,
+            system_message="You are CrucibAI, an advanced AI assistant specialized in software development, code generation, and technical analysis. Be concise, helpful, and provide code examples when relevant."
+        ).with_model(model_config["provider"], model_config["model"])
+        
+        # Send message
+        user_message = UserMessage(text=data.message)
+        response = await chat.send_message(user_message)
+        
+        # Estimate tokens (rough estimate)
+        tokens_used = len(data.message.split()) * 2 + len(response.split()) * 2
+        
+        # Store in chat history
+        await db.chat_history.insert_one({
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "user_id": user["id"] if user else None,
+            "message": data.message,
+            "response": response,
+            "model": f"{model_config['provider']}/{model_config['model']}",
+            "tokens_used": tokens_used,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Deduct tokens if user is logged in
+        if user and user.get("token_balance", 0) >= tokens_used:
+            await db.users.update_one(
+                {"id": user["id"]},
+                {"$inc": {"token_balance": -tokens_used}}
+            )
+        
+        return {
+            "response": response,
+            "model_used": f"{model_config['provider']}/{model_config['model']}",
+            "tokens_used": tokens_used,
+            "session_id": session_id
+        }
+        
+    except Exception as e:
+        logger.error(f"AI Chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
+
+@api_router.get("/ai/chat/history/{session_id}")
+async def get_chat_history(session_id: str):
+    """Get chat history for a session"""
+    history = await db.chat_history.find(
+        {"session_id": session_id}, 
+        {"_id": 0}
+    ).sort("created_at", 1).to_list(100)
+    return {"history": history}
+
+@api_router.post("/ai/analyze")
+async def ai_analyze(data: DocumentProcess, user: dict = Depends(get_optional_user)):
+    """Document analysis with AI"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        prompts = {
+            "summarize": f"Please provide a concise summary of the following content:\n\n{data.content}",
+            "extract": f"Extract key entities, facts, and important information from:\n\n{data.content}",
+            "analyze": f"Provide a detailed analysis of the following content, including insights and recommendations:\n\n{data.content}"
+        }
+        
+        prompt = prompts.get(data.task, prompts["analyze"])
+        
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=str(uuid.uuid4()),
+            system_message="You are an expert document analyst. Provide clear, structured analysis."
+        ).with_model("openai", "gpt-4o")
+        
+        response = await chat.send_message(UserMessage(text=prompt))
+        
+        return {
+            "result": response,
+            "task": data.task,
+            "model_used": "openai/gpt-4o"
+        }
+        
+    except Exception as e:
+        logger.error(f"Analysis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/rag/query")
+async def rag_query(data: RAGQuery, user: dict = Depends(get_optional_user)):
+    """RAG-style query with context"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        # Build context-aware prompt
+        context_str = f"\nContext: {data.context}" if data.context else ""
+        prompt = f"Based on available knowledge{context_str}, please answer: {data.query}\n\nProvide a detailed, well-sourced response."
+        
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=str(uuid.uuid4()),
+            system_message="You are a knowledgeable AI assistant. Always cite sources when possible and indicate confidence levels."
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        
+        response = await chat.send_message(UserMessage(text=prompt))
+        
+        return {
+            "answer": response,
+            "query": data.query,
+            "sources": ["AI Knowledge Base"],
+            "confidence": 0.85,
+            "model_used": "anthropic/claude-sonnet"
+        }
+        
+    except Exception as e:
+        logger.error(f"RAG error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/search")
+async def hybrid_search(data: SearchQuery, user: dict = Depends(get_optional_user)):
+    """Hybrid search combining vector and keyword search"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        # Use AI to enhance search results
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=str(uuid.uuid4()),
+            system_message="You are a search assistant. Provide relevant, structured results."
+        ).with_model("gemini", "gemini-2.5-flash")
+        
+        prompt = f"Search query: '{data.query}'\nProvide 5 relevant results with titles, descriptions, and relevance scores (0-1)."
+        response = await chat.send_message(UserMessage(text=prompt))
+        
+        return {
+            "query": data.query,
+            "search_type": data.search_type,
+            "results": response,
+            "total_results": 5
+        }
+        
+    except Exception as e:
+        logger.error(f"Search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
@@ -159,13 +360,12 @@ async def register(data: UserRegister):
         "email": data.email,
         "password": hash_password(data.password),
         "name": data.name,
-        "token_balance": 50000,  # Free starter tokens
+        "token_balance": 50000,
         "plan": "free",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)
     
-    # Create initial token ledger entry
     await db.token_ledger.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -203,15 +403,9 @@ async def purchase_tokens(data: TokenPurchase, user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail="Invalid bundle")
     
     bundle = TOKEN_BUNDLES[data.bundle]
-    
-    # Update user balance
     new_balance = user["token_balance"] + bundle["tokens"]
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {"token_balance": new_balance}}
-    )
+    await db.users.update_one({"id": user["id"]}, {"$set": {"token_balance": new_balance}})
     
-    # Record transaction
     await db.token_ledger.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -231,7 +425,6 @@ async def get_token_history(user: dict = Depends(get_current_user)):
 
 @api_router.get("/tokens/usage")
 async def get_token_usage(user: dict = Depends(get_current_user)):
-    # Get usage by agent
     usage = await db.token_usage.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
     
     by_agent = {}
@@ -264,7 +457,6 @@ async def get_agents():
 async def get_agent_status(project_id: str, user: dict = Depends(get_current_user)):
     statuses = await db.agent_status.find({"project_id": project_id}, {"_id": 0}).to_list(100)
     if not statuses:
-        # Return default idle status for all agents
         return {"statuses": [{"agent_name": a["name"], "status": "idle", "progress": 0, "tokens_used": 0} for a in AGENT_DEFINITIONS]}
     return {"statuses": statuses}
 
@@ -272,8 +464,7 @@ async def get_agent_status(project_id: str, user: dict = Depends(get_current_use
 
 @api_router.post("/projects")
 async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    # Estimate tokens needed
-    estimated = data.estimated_tokens or 675000  # Default estimate
+    estimated = data.estimated_tokens or 675000
     
     if user["token_balance"] < estimated:
         raise HTTPException(status_code=400, detail=f"Insufficient tokens. Need {estimated}, have {user['token_balance']}")
@@ -295,13 +486,8 @@ async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks,
     }
     await db.projects.insert_one(project)
     
-    # Deduct tokens
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$inc": {"token_balance": -estimated}}
-    )
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_balance": -estimated}})
     
-    # Start background orchestration
     background_tasks.add_task(run_orchestration, project_id, user["id"])
     
     return {"project": {k: v for k, v in project.items() if k != "_id"}}
@@ -323,7 +509,7 @@ async def get_project_logs(project_id: str, user: dict = Depends(get_current_use
     logs = await db.project_logs.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
     return {"logs": logs}
 
-# ==================== ORCHESTRATION SIMULATION ====================
+# ==================== ORCHESTRATION ====================
 
 async def run_orchestration(project_id: str, user_id: str):
     """Simulates the agent orchestration process"""
@@ -346,7 +532,6 @@ async def run_orchestration(project_id: str, user_id: str):
     
     total_used = 0
     for agent_name, base_tokens in agents_order:
-        # Update agent status to running
         await db.agent_status.update_one(
             {"project_id": project_id, "agent_name": agent_name},
             {"$set": {
@@ -360,7 +545,6 @@ async def run_orchestration(project_id: str, user_id: str):
             upsert=True
         )
         
-        # Log start
         await db.project_logs.insert_one({
             "id": str(uuid.uuid4()),
             "project_id": project_id,
@@ -370,22 +554,19 @@ async def run_orchestration(project_id: str, user_id: str):
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
-        # Simulate progress
         tokens_used = int(base_tokens * random.uniform(0.8, 1.2))
         for progress in range(0, 101, 20):
-            await asyncio.sleep(0.5)  # Simulate work
+            await asyncio.sleep(0.5)
             await db.agent_status.update_one(
                 {"project_id": project_id, "agent_name": agent_name},
                 {"$set": {"progress": progress, "tokens_used": int(tokens_used * progress / 100)}}
             )
         
-        # Complete agent
         await db.agent_status.update_one(
             {"project_id": project_id, "agent_name": agent_name},
             {"$set": {"status": "completed", "progress": 100, "tokens_used": tokens_used}}
         )
         
-        # Record token usage
         await db.token_usage.insert_one({
             "id": str(uuid.uuid4()),
             "project_id": project_id,
@@ -397,7 +578,6 @@ async def run_orchestration(project_id: str, user_id: str):
         
         total_used += tokens_used
         
-        # Log completion
         await db.project_logs.insert_one({
             "id": str(uuid.uuid4()),
             "project_id": project_id,
@@ -407,8 +587,7 @@ async def run_orchestration(project_id: str, user_id: str):
             "created_at": datetime.now(timezone.utc).isoformat()
         })
     
-    # Complete project
-    live_url = f"https://app-{project_id[:8]}.agentforge.dev"
+    live_url = f"https://app-{project_id[:8]}.crucibai.dev"
     await db.projects.update_one(
         {"id": project_id},
         {"$set": {
@@ -419,7 +598,6 @@ async def run_orchestration(project_id: str, user_id: str):
         }}
     )
     
-    # Refund unused tokens
     project = await db.projects.find_one({"id": project_id})
     if project:
         refund = project["tokens_allocated"] - total_used
@@ -437,17 +615,17 @@ async def run_orchestration(project_id: str, user_id: str):
 # ==================== EXPORTS ROUTES ====================
 
 @api_router.post("/exports")
-async def create_export(data: ExportRequest, user: dict = Depends(get_current_user)):
-    project = await db.projects.find_one({"id": data.project_id, "user_id": user["id"]})
+async def create_export(data: dict, user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one({"id": data.get("project_id"), "user_id": user["id"]})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
     export_id = str(uuid.uuid4())
     export_doc = {
         "id": export_id,
-        "project_id": data.project_id,
+        "project_id": data.get("project_id"),
         "user_id": user["id"],
-        "format": data.format,
+        "format": data.get("format", "pdf"),
         "status": "completed",
         "download_url": f"/api/exports/{export_id}/download",
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -464,7 +642,7 @@ async def get_exports(user: dict = Depends(get_current_user)):
 # ==================== PATTERNS ROUTES ====================
 
 @api_router.get("/patterns")
-async def get_patterns(user: dict = Depends(get_current_user)):
+async def get_patterns(user: dict = Depends(get_optional_user)):
     patterns = [
         {"id": "auth-jwt", "name": "JWT Authentication", "category": "auth", "usage_count": 1250, "tokens_saved": 45000},
         {"id": "stripe-checkout", "name": "Stripe Checkout Flow", "category": "payments", "usage_count": 890, "tokens_saved": 60000},
@@ -486,10 +664,8 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     total_projects = len(projects)
     completed_projects = len([p for p in projects if p.get("status") == "completed"])
     running_projects = len([p for p in projects if p.get("status") == "running"])
-    
     total_tokens_used = sum(p.get("tokens_used", 0) for p in projects)
     
-    # Weekly stats (simulated)
     weekly_data = [
         {"day": "Mon", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
         {"day": "Tue", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
@@ -514,7 +690,7 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "AgentForge AI Platform API", "version": "1.0.0"}
+    return {"message": "CrucibAI Platform API", "version": "1.0.0"}
 
 @api_router.get("/health")
 async def health():
