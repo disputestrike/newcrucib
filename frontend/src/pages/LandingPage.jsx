@@ -14,7 +14,7 @@ const LandingPage = () => {
   // Chat state
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm CrucibAI. Describe what you want to build and I'll help you get started." }
+    { role: 'assistant', content: "Hi! I'm CrucibAI. Describe what you want to build and I'll create it for you instantly." }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}`);
