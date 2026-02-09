@@ -353,11 +353,12 @@ class CrucibAITester:
 
     def run_all_tests(self):
         """Run all API tests"""
-        print("🚀 Starting AgentForge API Tests")
+        print("🚀 Starting CrucibAI API Tests")
         print(f"Base URL: {self.base_url}")
         
         # Run tests in logical order
         self.test_health_endpoints()
+        self.test_ai_endpoints()  # Test AI endpoints early
         self.test_auth_flow()
         self.test_token_endpoints()
         self.test_agent_endpoints()
@@ -387,7 +388,7 @@ class CrucibAITester:
         return self.tests_passed == self.tests_run
 
 def main():
-    tester = AgentForgeAPITester()
+    tester = CrucibAITester()
     success = tester.run_all_tests()
     return 0 if success else 1
 
