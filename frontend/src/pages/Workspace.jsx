@@ -758,7 +758,7 @@ Respond with ONLY the complete App.js code, nothing else.`;
       </div>
 
       {/* Bottom Chat Panel */}
-      <div className="border-t border-zinc-800 p-4 flex-shrink-0">
+      <div className="border-t border-zinc-800 p-4 flex-shrink-0 relative z-50">
         {isBuilding && (
           <div className="mb-3">
             <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
