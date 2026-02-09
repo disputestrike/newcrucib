@@ -9,24 +9,24 @@
 @import '@fontsource/jetbrains-mono/400.css';
 
 :root {
-  --background: 0 0% 3%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 5%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 5%;
-  --popover-foreground: 0 0% 98%;
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 9%;
   --primary: 217 91% 60%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 240 4% 16%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 65%;
-  --accent: 240 4% 16%;
-  --accent-foreground: 0 0% 98%;
+  --secondary: 240 4% 96%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 240 4% 96%;
+  --muted-foreground: 240 5% 46%;
+  --accent: 240 4% 96%;
+  --accent-foreground: 0 0% 9%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 4% 16%;
-  --input: 240 4% 16%;
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
   --ring: 217 91% 60%;
   --radius: 0.5rem;
   --chart-1: 217 91% 60%;
@@ -34,6 +34,24 @@
   --chart-3: 271 81% 56%;
   --chart-4: 47 95% 57%;
   --chart-5: 0 84% 60%;
+}
+
+/* Dark theme for dashboard */
+.dark {
+  --background: 0 0% 3%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 5%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 5%;
+  --popover-foreground: 0 0% 98%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 98%;
+  --border: 240 4% 16%;
+  --input: 240 4% 16%;
 }
 
 * {
