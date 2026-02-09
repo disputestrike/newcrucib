@@ -1,0 +1,265 @@
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Bot, CheckCircle, Clock, AlertCircle, Play, Pause,
+  Zap, ArrowLeft, ExternalLink, Download, RefreshCw
+} from 'lucide-react';
+import { useAuth, API } from '../App';
+import axios from 'axios';
+
+const AgentMonitor = () => {
+  const { id } = useParams();
+  const { token } = useAuth();
+  
+  const [project, setProject] = useState(null);
+  const [agents, setAgents] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [polling, setPolling] = useState(true);
+
+  const agentLayers = {
+    planning: ['Planner', 'Requirements Clarifier', 'Stack Selector'],
+    execution: ['Frontend Generation', 'Backend Generation', 'Database Agent', 'API Integration', 'Test Generation'],
+    validation: ['Security Checker', 'Test Executor', 'UX Auditor', 'Performance Analyzer'],
+    deployment: ['Deployment Agent', 'Error Recovery', 'Memory Agent']
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [projectRes, agentsRes, logsRes] = await Promise.all([
+          axios.get(`${API}/projects/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${API}/agents/status/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${API}/projects/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        setProject(projectRes.data.project);
+        setAgents(agentsRes.data.statuses);
+        setLogs(logsRes.data.logs);
+        
+        if (projectRes.data.project.status === 'completed' || projectRes.data.project.status === 'failed') {
+          setPolling(false);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    
+    let interval;
+    if (polling) {
+      interval = setInterval(fetchData, 2000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [id, token, polling]);
+
+  const getAgentStatus = (agentName) => {
+    return agents.find(a => a.agent_name === agentName) || { status: 'idle', progress: 0, tokens_used: 0 };
+  };
+
+  const getLayerColor = (layer) => {
+    switch (layer) {
+      case 'planning': return 'blue';
+      case 'execution': return 'green';
+      case 'validation': return 'purple';
+      case 'deployment': return 'orange';
+      default: return 'gray';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-400">Loading project...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="text-center py-20">
+        <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Project not found</h2>
+        <Link to="/app" className="text-blue-400 hover:text-blue-300">Back to dashboard</Link>
+      </div>
+    );
+  }
+
+  const completedAgents = agents.filter(a => a.status === 'completed').length;
+  const totalAgents = 12;
+  const progress = Math.round((completedAgents / totalAgents) * 100);
+
+  return (
+    <div className="space-y-6" data-testid="agent-monitor">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link to="/app" className="p-2 hover:bg-white/10 rounded-lg transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">{project.name}</h1>
+            <p className="text-gray-400">{project.project_type}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+            project.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+            project.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+            project.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+            'bg-gray-500/20 text-gray-400'
+          }`} data-testid="project-status">
+            {project.status === 'running' && <span className="inline-block w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>}
+            {project.status}
+          </span>
+          {project.live_url && (
+            <a
+              href={project.live_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg font-medium transition"
+              data-testid="live-url-btn"
+            >
+              <ExternalLink className="w-4 h-4" />
+              View Live
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold">Generation Progress</h3>
+            <p className="text-sm text-gray-500">{completedAgents} of {totalAgents} agents completed</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Tokens Used</p>
+              <p className="font-bold text-lg flex items-center gap-1">
+                <Zap className="w-4 h-4 text-yellow-500" />
+                {project.tokens_used?.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="relative h-3 bg-white/10 rounded-full overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            className={`absolute inset-y-0 left-0 rounded-full ${
+              project.status === 'completed' ? 'bg-green-500' :
+              project.status === 'failed' ? 'bg-red-500' :
+              'bg-blue-500'
+            }`}
+          />
+        </div>
+        <p className="text-right text-sm text-gray-500 mt-2">{progress}%</p>
+      </div>
+
+      {/* Agent Grid */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {Object.entries(agentLayers).map(([layer, layerAgents]) => {
+          const color = getLayerColor(layer);
+          return (
+            <div key={layer} className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10">
+              <h3 className={`text-lg font-semibold mb-4 capitalize flex items-center gap-2 text-${color}-400`}>
+                <div className={`w-3 h-3 rounded-full bg-${color}-400`}></div>
+                {layer} Layer
+              </h3>
+              <div className="space-y-3">
+                {layerAgents.map(agentName => {
+                  const agent = getAgentStatus(agentName);
+                  return (
+                    <motion.div
+                      key={agentName}
+                      layout
+                      className={`p-4 rounded-lg border transition-all ${
+                        agent.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
+                        agent.status === 'running' ? `bg-${color}-500/10 border-${color}-500/30` :
+                        agent.status === 'failed' ? 'bg-red-500/10 border-red-500/30' :
+                        'bg-white/5 border-white/10'
+                      }`}
+                      data-testid={`agent-${agentName.toLowerCase().replace(/ /g, '-')}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                            agent.status === 'completed' ? 'bg-green-500/20' :
+                            agent.status === 'running' ? `bg-${color}-500/20` :
+                            'bg-white/10'
+                          }`}>
+                            {agent.status === 'completed' ? <CheckCircle className="w-4 h-4 text-green-400" /> :
+                             agent.status === 'running' ? <Bot className={`w-4 h-4 text-${color}-400 animate-pulse`} /> :
+                             agent.status === 'failed' ? <AlertCircle className="w-4 h-4 text-red-400" /> :
+                             <Clock className="w-4 h-4 text-gray-500" />}
+                          </div>
+                          <span className="font-medium">{agentName}</span>
+                        </div>
+                        <span className="text-sm text-gray-500">
+                          {agent.tokens_used?.toLocaleString() || 0} tokens
+                        </span>
+                      </div>
+                      {agent.status === 'running' && (
+                        <div className="relative h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${agent.progress}%` }}
+                            className={`absolute inset-y-0 left-0 bg-${color}-500 rounded-full`}
+                          />
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Logs */}
+      <div className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10">
+        <h3 className="text-lg font-semibold mb-4">Activity Log</h3>
+        <div className="h-64 overflow-y-auto space-y-2 mono text-sm" data-testid="activity-log">
+          <AnimatePresence>
+            {logs.map((log, i) => (
+              <motion.div
+                key={log.id || i}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start gap-3 p-2 hover:bg-white/5 rounded"
+              >
+                <span className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+                  log.level === 'success' ? 'bg-green-400' :
+                  log.level === 'error' ? 'bg-red-400' :
+                  log.level === 'warning' ? 'bg-yellow-400' :
+                  'bg-blue-400'
+                }`}></span>
+                <span className="text-gray-500 flex-shrink-0">
+                  {new Date(log.created_at).toLocaleTimeString()}
+                </span>
+                <span className="text-gray-300">{log.message}</span>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {logs.length === 0 && (
+            <p className="text-gray-500 text-center py-8">Waiting for activity...</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AgentMonitor;
