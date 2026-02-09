@@ -1,72 +1,526 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import hashlib
+import asyncio
+import random
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
+app = FastAPI(title="AgentForge AI Platform")
 api_router = APIRouter(prefix="/api")
+security = HTTPBearer(auto_error=False)
 
+JWT_SECRET = os.environ.get('JWT_SECRET', 'agentforge-secret-key-2024')
+JWT_ALGORITHM = "HS256"
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# ==================== MODELS ====================
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+    token_balance: int
+    plan: str
+    created_at: str
+
+class TokenPurchase(BaseModel):
+    bundle: str  # starter, pro, professional, enterprise, unlimited
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: str
+    project_type: str  # website, api, fullstack, automation
+    requirements: Dict[str, Any]
+    estimated_tokens: Optional[int] = None
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    project_type: str
+    status: str
+    tokens_allocated: int
+    tokens_used: int
+    created_at: str
+    completed_at: Optional[str] = None
+    live_url: Optional[str] = None
+
+class AgentStatus(BaseModel):
+    agent_name: str
+    status: str  # idle, running, completed, failed
+    progress: int
+    tokens_used: int
+    current_task: Optional[str] = None
+    started_at: Optional[str] = None
+
+class ExportRequest(BaseModel):
+    project_id: str
+    format: str  # pdf, excel, markdown, all
+    include_images: bool = True
+
+# ==================== TOKEN PRICING ====================
+
+TOKEN_BUNDLES = {
+    "starter": {"tokens": 100000, "price": 9.99},
+    "pro": {"tokens": 500000, "price": 49.99},
+    "professional": {"tokens": 1200000, "price": 99.99},
+    "enterprise": {"tokens": 5000000, "price": 299.99},
+    "unlimited": {"tokens": 25000000, "price": 999.99}
+}
+
+AGENT_DEFINITIONS = [
+    {"name": "Planner", "layer": "planning", "description": "Decomposes user requests into executable tasks", "avg_tokens": 50000},
+    {"name": "Requirements Clarifier", "layer": "planning", "description": "Asks clarifying questions and validates requirements", "avg_tokens": 30000},
+    {"name": "Stack Selector", "layer": "planning", "description": "Chooses optimal technology stack", "avg_tokens": 20000},
+    {"name": "Frontend Generation", "layer": "execution", "description": "Generates React/Next.js UI components", "avg_tokens": 150000},
+    {"name": "Backend Generation", "layer": "execution", "description": "Creates APIs, auth, business logic", "avg_tokens": 120000},
+    {"name": "Database Agent", "layer": "execution", "description": "Designs schema and migrations", "avg_tokens": 80000},
+    {"name": "API Integration", "layer": "execution", "description": "Integrates third-party APIs", "avg_tokens": 60000},
+    {"name": "Test Generation", "layer": "execution", "description": "Writes comprehensive test suites", "avg_tokens": 100000},
+    {"name": "Image Generation", "layer": "execution", "description": "Creates AI-generated visuals", "avg_tokens": 40000},
+    {"name": "Security Checker", "layer": "validation", "description": "Audits for vulnerabilities", "avg_tokens": 40000},
+    {"name": "Test Executor", "layer": "validation", "description": "Runs all tests and reports", "avg_tokens": 50000},
+    {"name": "UX Auditor", "layer": "validation", "description": "Reviews design and accessibility", "avg_tokens": 35000},
+    {"name": "Performance Analyzer", "layer": "validation", "description": "Optimizes speed and efficiency", "avg_tokens": 40000},
+    {"name": "Deployment Agent", "layer": "deployment", "description": "Deploys to cloud platforms", "avg_tokens": 60000},
+    {"name": "Error Recovery", "layer": "deployment", "description": "Auto-fixes failures", "avg_tokens": 45000},
+    {"name": "Memory Agent", "layer": "deployment", "description": "Stores patterns for reuse", "avg_tokens": 25000},
+    {"name": "PDF Export", "layer": "export", "description": "Generates formatted PDF reports", "avg_tokens": 30000},
+    {"name": "Excel Export", "layer": "export", "description": "Creates spreadsheets with formulas", "avg_tokens": 25000},
+    {"name": "Scraping Agent", "layer": "automation", "description": "Extracts data from websites", "avg_tokens": 35000},
+    {"name": "Automation Agent", "layer": "automation", "description": "Schedules tasks and workflows", "avg_tokens": 30000}
+]
+
+# ==================== HELPERS ====================
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_token(user_id: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(days=30)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# ==================== AUTH ROUTES ====================
+
+@api_router.post("/auth/register")
+async def register(data: UserRegister):
+    existing = await db.users.find_one({"email": data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
     
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_id = str(uuid.uuid4())
+    user = {
+        "id": user_id,
+        "email": data.email,
+        "password": hash_password(data.password),
+        "name": data.name,
+        "token_balance": 50000,  # Free starter tokens
+        "plan": "free",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user)
+    
+    # Create initial token ledger entry
+    await db.token_ledger.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "tokens": 50000,
+        "type": "bonus",
+        "description": "Welcome bonus tokens",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    token = create_token(user_id)
+    return {"token": token, "user": {k: v for k, v in user.items() if k != "password" and k != "_id"}}
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+@api_router.post("/auth/login")
+async def login(data: UserLogin):
+    user = await db.users.find_one({"email": data.email}, {"_id": 0})
+    if not user or user["password"] != hash_password(data.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token = create_token(user["id"])
+    return {"token": token, "user": {k: v for k, v in user.items() if k != "password"}}
 
-# Add your routes to the router instead of directly to app
+@api_router.get("/auth/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    return {k: v for k, v in user.items() if k != "password"}
+
+# ==================== TOKEN ROUTES ====================
+
+@api_router.get("/tokens/bundles")
+async def get_bundles():
+    return {"bundles": TOKEN_BUNDLES}
+
+@api_router.post("/tokens/purchase")
+async def purchase_tokens(data: TokenPurchase, user: dict = Depends(get_current_user)):
+    if data.bundle not in TOKEN_BUNDLES:
+        raise HTTPException(status_code=400, detail="Invalid bundle")
+    
+    bundle = TOKEN_BUNDLES[data.bundle]
+    
+    # Update user balance
+    new_balance = user["token_balance"] + bundle["tokens"]
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"token_balance": new_balance}}
+    )
+    
+    # Record transaction
+    await db.token_ledger.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "tokens": bundle["tokens"],
+        "type": "purchase",
+        "bundle": data.bundle,
+        "price": bundle["price"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "Purchase successful", "new_balance": new_balance, "tokens_added": bundle["tokens"]}
+
+@api_router.get("/tokens/history")
+async def get_token_history(user: dict = Depends(get_current_user)):
+    history = await db.token_ledger.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"history": history, "current_balance": user["token_balance"]}
+
+@api_router.get("/tokens/usage")
+async def get_token_usage(user: dict = Depends(get_current_user)):
+    # Get usage by agent
+    usage = await db.token_usage.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
+    
+    by_agent = {}
+    by_project = {}
+    total_used = 0
+    
+    for u in usage:
+        agent = u.get("agent", "Unknown")
+        project = u.get("project_id", "Unknown")
+        tokens = u.get("tokens", 0)
+        
+        by_agent[agent] = by_agent.get(agent, 0) + tokens
+        by_project[project] = by_project.get(project, 0) + tokens
+        total_used += tokens
+    
+    return {
+        "total_used": total_used,
+        "by_agent": by_agent,
+        "by_project": by_project,
+        "balance": user["token_balance"]
+    }
+
+# ==================== AGENTS ROUTES ====================
+
+@api_router.get("/agents")
+async def get_agents():
+    return {"agents": AGENT_DEFINITIONS}
+
+@api_router.get("/agents/status/{project_id}")
+async def get_agent_status(project_id: str, user: dict = Depends(get_current_user)):
+    statuses = await db.agent_status.find({"project_id": project_id}, {"_id": 0}).to_list(100)
+    if not statuses:
+        # Return default idle status for all agents
+        return {"statuses": [{"agent_name": a["name"], "status": "idle", "progress": 0, "tokens_used": 0} for a in AGENT_DEFINITIONS]}
+    return {"statuses": statuses}
+
+# ==================== PROJECT ROUTES ====================
+
+@api_router.post("/projects")
+async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    # Estimate tokens needed
+    estimated = data.estimated_tokens or 675000  # Default estimate
+    
+    if user["token_balance"] < estimated:
+        raise HTTPException(status_code=400, detail=f"Insufficient tokens. Need {estimated}, have {user['token_balance']}")
+    
+    project_id = str(uuid.uuid4())
+    project = {
+        "id": project_id,
+        "user_id": user["id"],
+        "name": data.name,
+        "description": data.description,
+        "project_type": data.project_type,
+        "requirements": data.requirements,
+        "status": "queued",
+        "tokens_allocated": estimated,
+        "tokens_used": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+        "live_url": None
+    }
+    await db.projects.insert_one(project)
+    
+    # Deduct tokens
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$inc": {"token_balance": -estimated}}
+    )
+    
+    # Start background orchestration
+    background_tasks.add_task(run_orchestration, project_id, user["id"])
+    
+    return {"project": {k: v for k, v in project.items() if k != "_id"}}
+
+@api_router.get("/projects")
+async def get_projects(user: dict = Depends(get_current_user)):
+    projects = await db.projects.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"projects": projects}
+
+@api_router.get("/projects/{project_id}")
+async def get_project(project_id: str, user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"project": project}
+
+@api_router.get("/projects/{project_id}/logs")
+async def get_project_logs(project_id: str, user: dict = Depends(get_current_user)):
+    logs = await db.project_logs.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return {"logs": logs}
+
+# ==================== ORCHESTRATION SIMULATION ====================
+
+async def run_orchestration(project_id: str, user_id: str):
+    """Simulates the agent orchestration process"""
+    agents_order = [
+        ("Planner", 50000),
+        ("Requirements Clarifier", 30000),
+        ("Stack Selector", 20000),
+        ("Frontend Generation", 150000),
+        ("Backend Generation", 120000),
+        ("Database Agent", 80000),
+        ("API Integration", 60000),
+        ("Test Generation", 100000),
+        ("Security Checker", 40000),
+        ("Test Executor", 50000),
+        ("Deployment Agent", 60000),
+        ("Memory Agent", 25000)
+    ]
+    
+    await db.projects.update_one({"id": project_id}, {"$set": {"status": "running"}})
+    
+    total_used = 0
+    for agent_name, base_tokens in agents_order:
+        # Update agent status to running
+        await db.agent_status.update_one(
+            {"project_id": project_id, "agent_name": agent_name},
+            {"$set": {
+                "project_id": project_id,
+                "agent_name": agent_name,
+                "status": "running",
+                "progress": 0,
+                "tokens_used": 0,
+                "started_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+        
+        # Log start
+        await db.project_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "agent": agent_name,
+            "message": f"Starting {agent_name}...",
+            "level": "info",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Simulate progress
+        tokens_used = int(base_tokens * random.uniform(0.8, 1.2))
+        for progress in range(0, 101, 20):
+            await asyncio.sleep(0.5)  # Simulate work
+            await db.agent_status.update_one(
+                {"project_id": project_id, "agent_name": agent_name},
+                {"$set": {"progress": progress, "tokens_used": int(tokens_used * progress / 100)}}
+            )
+        
+        # Complete agent
+        await db.agent_status.update_one(
+            {"project_id": project_id, "agent_name": agent_name},
+            {"$set": {"status": "completed", "progress": 100, "tokens_used": tokens_used}}
+        )
+        
+        # Record token usage
+        await db.token_usage.insert_one({
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "user_id": user_id,
+            "agent": agent_name,
+            "tokens": tokens_used,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        total_used += tokens_used
+        
+        # Log completion
+        await db.project_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "agent": agent_name,
+            "message": f"{agent_name} completed. Used {tokens_used:,} tokens.",
+            "level": "success",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    # Complete project
+    live_url = f"https://app-{project_id[:8]}.agentforge.dev"
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {
+            "status": "completed",
+            "tokens_used": total_used,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "live_url": live_url
+        }}
+    )
+    
+    # Refund unused tokens
+    project = await db.projects.find_one({"id": project_id})
+    if project:
+        refund = project["tokens_allocated"] - total_used
+        if refund > 0:
+            await db.users.update_one({"id": user_id}, {"$inc": {"token_balance": refund}})
+            await db.token_ledger.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "tokens": refund,
+                "type": "refund",
+                "description": f"Unused tokens from project {project_id[:8]}",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+# ==================== EXPORTS ROUTES ====================
+
+@api_router.post("/exports")
+async def create_export(data: ExportRequest, user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one({"id": data.project_id, "user_id": user["id"]})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    export_id = str(uuid.uuid4())
+    export_doc = {
+        "id": export_id,
+        "project_id": data.project_id,
+        "user_id": user["id"],
+        "format": data.format,
+        "status": "completed",
+        "download_url": f"/api/exports/{export_id}/download",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.exports.insert_one(export_doc)
+    
+    return {"export": {k: v for k, v in export_doc.items() if k != "_id"}}
+
+@api_router.get("/exports")
+async def get_exports(user: dict = Depends(get_current_user)):
+    exports = await db.exports.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"exports": exports}
+
+# ==================== PATTERNS ROUTES ====================
+
+@api_router.get("/patterns")
+async def get_patterns(user: dict = Depends(get_current_user)):
+    patterns = [
+        {"id": "auth-jwt", "name": "JWT Authentication", "category": "auth", "usage_count": 1250, "tokens_saved": 45000},
+        {"id": "stripe-checkout", "name": "Stripe Checkout Flow", "category": "payments", "usage_count": 890, "tokens_saved": 60000},
+        {"id": "crud-api", "name": "RESTful CRUD API", "category": "backend", "usage_count": 2100, "tokens_saved": 35000},
+        {"id": "responsive-dashboard", "name": "Responsive Dashboard", "category": "frontend", "usage_count": 1560, "tokens_saved": 80000},
+        {"id": "social-oauth", "name": "Social OAuth (Google/GitHub)", "category": "auth", "usage_count": 780, "tokens_saved": 55000},
+        {"id": "file-upload", "name": "File Upload with S3", "category": "storage", "usage_count": 650, "tokens_saved": 40000},
+        {"id": "email-sendgrid", "name": "SendGrid Email Integration", "category": "communications", "usage_count": 920, "tokens_saved": 30000},
+        {"id": "realtime-ws", "name": "WebSocket Real-time Updates", "category": "realtime", "usage_count": 430, "tokens_saved": 65000}
+    ]
+    return {"patterns": patterns}
+
+# ==================== DASHBOARD STATS ====================
+
+@api_router.get("/dashboard/stats")
+async def get_dashboard_stats(user: dict = Depends(get_current_user)):
+    projects = await db.projects.find({"user_id": user["id"]}).to_list(1000)
+    
+    total_projects = len(projects)
+    completed_projects = len([p for p in projects if p.get("status") == "completed"])
+    running_projects = len([p for p in projects if p.get("status") == "running"])
+    
+    total_tokens_used = sum(p.get("tokens_used", 0) for p in projects)
+    
+    # Weekly stats (simulated)
+    weekly_data = [
+        {"day": "Mon", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
+        {"day": "Tue", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
+        {"day": "Wed", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
+        {"day": "Thu", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
+        {"day": "Fri", "tokens": random.randint(20000, 100000), "projects": random.randint(1, 5)},
+        {"day": "Sat", "tokens": random.randint(10000, 50000), "projects": random.randint(0, 3)},
+        {"day": "Sun", "tokens": random.randint(10000, 50000), "projects": random.randint(0, 3)}
+    ]
+    
+    return {
+        "total_projects": total_projects,
+        "completed_projects": completed_projects,
+        "running_projects": running_projects,
+        "token_balance": user["token_balance"],
+        "total_tokens_used": total_tokens_used,
+        "weekly_data": weekly_data,
+        "plan": user.get("plan", "free")
+    }
+
+# ==================== ROOT ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "AgentForge AI Platform API", "version": "1.0.0"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
+@api_router.get("/health")
+async def health():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
+# Include router
 app.include_router(api_router)
 
 app.add_middleware(
@@ -76,13 +530,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
