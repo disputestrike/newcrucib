@@ -96,7 +96,7 @@ const Layout = () => {
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <Sparkles className="w-6 h-6" />
             </div>
-            {sidebarOpen && <span className="text-xl font-bold">AgentForge</span>}
+            {sidebarOpen && <span className="text-xl font-bold">CrucibAI</span>}
           </Link>
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
