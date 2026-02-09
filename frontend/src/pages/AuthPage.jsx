@@ -84,9 +84,9 @@ const AuthPage = () => {
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Bot className="w-6 h-6" />
+                <Sparkles className="w-6 h-6" />
               </div>
-              <span className="text-xl font-bold">AgentForge</span>
+              <span className="text-xl font-bold">CrucibAI</span>
             </Link>
           </div>
           
