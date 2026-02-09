@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Bot, LayoutDashboard, FolderPlus, Coins, FileOutput, 
+  Sparkles, LayoutDashboard, FolderPlus, Coins, FileOutput, 
   Library, Settings, LogOut, Menu, X, ChevronRight,
-  Zap, Bell
+  Zap, Bell, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../App';
 
