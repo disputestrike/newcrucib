@@ -26,54 +26,8 @@ const LandingPage = () => {
 
   const startBuild = async (prompt) => {
     if (!prompt.trim() || isBuilding) return;
-
-    const userPrompt = prompt.trim();
-    setInput('');
-    setIsBuilding(true);
-    setBuildProgress(0);
-    setMessages(prev => [...prev, { role: 'user', content: userPrompt }]);
-
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: 'Working on it...',
-      isBuilding: true
-    }]);
-
-    try {
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      
-      const progressInterval = setInterval(() => {
-        setBuildProgress(prev => Math.min(prev + Math.random() * 15, 90));
-      }, 500);
-
-      const response = await axios.post(`${API}/ai/chat`, {
-        message: `Create a complete, production-ready React application for: "${userPrompt}". Use React hooks and Tailwind CSS. Make it modern and functional. Respond with ONLY the code.`,
-        session_id: sessionId,
-        model: 'auto'
-      }, { headers, timeout: 60000 });
-
-      clearInterval(progressInterval);
-      setBuildProgress(100);
-
-      const code = response.data.response.replace(/```jsx?/g, '').replace(/```/g, '').trim();
-
-      setGeneratedCode({ name: userPrompt.slice(0, 30), code });
-
-      setMessages(prev => prev.map((msg, i) => 
-        i === prev.length - 1 
-          ? { role: 'assistant', content: `Done. Your app is ready below. Tell me what to change.`, hasCode: true }
-          : msg
-      ));
-
-    } catch (error) {
-      setMessages(prev => prev.map((msg, i) => 
-        i === prev.length - 1 
-          ? { role: 'assistant', content: `Something went wrong. Try again.`, error: true }
-          : msg
-      ));
-    } finally {
-      setIsBuilding(false);
-    }
+    // Redirect to workspace with the prompt
+    navigate(`/workspace?prompt=${encodeURIComponent(prompt.trim())}`);
   };
 
   const handleSubmit = (e) => {
