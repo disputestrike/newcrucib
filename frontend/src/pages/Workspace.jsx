@@ -1,633 +1,881 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Send, Loader2, Play, ChevronRight, ChevronDown, 
-  File, Folder, Download, Upload, Mic, MicOff, Image,
-  RotateCcw, GitBranch, Rocket, X, Check, Settings,
-  Monitor, Code, Terminal, Clock, ChevronLeft, Plus
+import Editor from '@monaco-editor/react';
+import {
+  SandpackProvider,
+  SandpackPreview,
+} from '@codesandbox/sandpack-react';
+import {
+  ChevronDown,
+  Send,
+  Loader2,
+  ArrowLeft,
+  Download,
+  Copy,
+  Check,
+  Mic,
+  MicOff,
+  Paperclip,
+  X,
+  FileCode,
+  FolderOpen,
+  Terminal,
+  Eye,
+  Maximize2,
+  Minimize2,
+  Sparkles,
+  Image,
+  FileText,
+  File,
+  Coffee,
+  Zap,
+  RefreshCw,
+  ExternalLink,
+  Github,
+  History,
+  Undo2
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
 
-const Workspace = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user, token } = useAuth();
-  const initialPrompt = location.state?.prompt || '';
-  
-  // Project state
-  const [projectName, setProjectName] = useState('Untitled Project');
-  const [files, setFiles] = useState({
-    'src/App.jsx': '// Start building...\n\nexport default function App() {\n  return (\n    <div>\n      <h1>Hello World</h1>\n    </div>\n  );\n}',
-    'src/index.css': '@tailwind base;\n@tailwind components;\n@tailwind utilities;',
-    'package.json': '{\n  "name": "my-app",\n  "version": "1.0.0"\n}'
-  });
-  const [selectedFile, setSelectedFile] = useState('src/App.jsx');
-  const [versions, setVersions] = useState([]);
-  
-  // Chat state
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [isBuilding, setIsBuilding] = useState(false);
-  const [buildProgress, setBuildProgress] = useState(0);
-  
-  // Model selection
-  const [selectedModel, setSelectedModel] = useState('auto');
-  const [showModelPicker, setShowModelPicker] = useState(false);
-  
-  // Voice input
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const recognitionRef = useRef(null);
-  
-  // File upload
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef(null);
-  
-  // UI state
-  const [activePanel, setActivePanel] = useState('preview'); // preview, console
-  const [consoleOutput, setConsoleOutput] = useState([]);
-  const [showSidebar, setShowSidebar] = useState(true);
-  
-  const chatEndRef = useRef(null);
-  const [sessionId] = useState(() => `workspace_${Date.now()}`);
+// Default React app template
+const DEFAULT_FILES = {
+  '/App.js': {
+    code: `import React from 'react';
 
+export default function App() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-white mb-4">
+          Welcome to CrucibAI
+        </h1>
+        <p className="text-slate-400 text-lg">
+          Describe what you want to build in the chat...
+        </p>
+      </div>
+    </div>
+  );
+}`,
+  },
+  '/index.js': {
+    code: `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './styles.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);`,
+  },
+  '/styles.css': {
+    code: `@import url('https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}`,
+  },
+};
+
+// File tree component
+const FileTree = ({ files, activeFile, onSelectFile }) => {
+  const getFileIcon = (filename) => {
+    if (filename.endsWith('.js') || filename.endsWith('.jsx')) return <FileCode className="w-4 h-4 text-yellow-400" />;
+    if (filename.endsWith('.css')) return <FileText className="w-4 h-4 text-blue-400" />;
+    if (filename.endsWith('.html')) return <FileText className="w-4 h-4 text-orange-400" />;
+    return <File className="w-4 h-4 text-zinc-400" />;
+  };
+
+  const fileList = Object.keys(files).sort();
+
+  return (
+    <div className="text-sm">
+      <div className="flex items-center gap-2 px-3 py-2 text-zinc-400 text-xs uppercase tracking-wider">
+        <FolderOpen className="w-4 h-4" />
+        <span>Files</span>
+      </div>
+      {fileList.map((filename) => (
+        <button
+          key={filename}
+          onClick={() => onSelectFile(filename)}
+          data-testid={`file-${filename.replace('/', '')}`}
+          className={`w-full flex items-center gap-2 px-4 py-1.5 text-left transition ${
+            activeFile === filename
+              ? 'bg-zinc-800 text-white'
+              : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+          }`}
+        >
+          {getFileIcon(filename)}
+          <span className="truncate">{filename.replace('/', '')}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// Console/Logs component
+const ConsolePanel = ({ logs }) => {
+  const consoleRef = useRef(null);
+
+  useEffect(() => {
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  return (
+    <div ref={consoleRef} className="h-full overflow-auto font-mono text-xs p-3 space-y-1">
+      {logs.length === 0 ? (
+        <div className="text-zinc-600">Console output will appear here...</div>
+      ) : (
+        logs.map((log, i) => (
+          <div
+            key={i}
+            className={`flex items-start gap-2 ${
+              log.type === 'error' ? 'text-red-400' :
+              log.type === 'success' ? 'text-green-400' :
+              log.type === 'warning' ? 'text-yellow-400' :
+              'text-zinc-400'
+            }`}
+          >
+            <span className="text-zinc-600">[{log.time}]</span>
+            <span className="text-zinc-500">{log.agent || 'system'}:</span>
+            <span className="flex-1">{log.message}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+// LLM Selector dropdown
+const ModelSelector = ({ selectedModel, onSelectModel }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
   const models = [
-    { id: 'auto', name: 'Auto (Best for task)', desc: 'Automatically selects the best model' },
-    { id: 'gpt-4o', name: 'GPT-4o', desc: 'OpenAI - Best for general tasks' },
-    { id: 'claude', name: 'Claude Sonnet', desc: 'Anthropic - Best for code' },
-    { id: 'gemini', name: 'Gemini Flash', desc: 'Google - Fast responses' }
+    { id: 'auto', name: 'Auto Select', icon: Sparkles, desc: 'Best model for the task' },
+    { id: 'gpt-4o', name: 'GPT-4o', icon: Zap, desc: 'OpenAI latest' },
+    { id: 'claude', name: 'Claude 3.5', icon: Coffee, desc: 'Anthropic Sonnet' },
+    { id: 'gemini', name: 'Gemini Flash', icon: RefreshCw, desc: 'Google fast model' },
   ];
 
-  // Initialize speech recognition
+  const selected = models.find(m => m.id === selectedModel) || models[0];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        data-testid="model-selector"
+        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+      >
+        <selected.icon className="w-4 h-4" />
+        <span>{selected.name}</span>
+        <ChevronDown className={`w-3 h-3 transition ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute bottom-full left-0 mb-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-50"
+          >
+            {models.map((model) => (
+              <button
+                key={model.id}
+                onClick={() => { onSelectModel(model.id); setIsOpen(false); }}
+                data-testid={`model-option-${model.id}`}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
+                  selectedModel === model.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/50'
+                }`}
+              >
+                <model.icon className="w-4 h-4" />
+                <div>
+                  <div className="text-sm font-medium">{model.name}</div>
+                  <div className="text-xs text-zinc-500">{model.desc}</div>
+                </div>
+                {selectedModel === model.id && <Check className="w-4 h-4 ml-auto text-green-400" />}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// Version History Panel
+const VersionHistory = ({ versions, onRestore, currentVersion }) => {
+  return (
+    <div className="p-3 space-y-2 overflow-y-auto h-full">
+      <div className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Version History</div>
+      {versions.length === 0 ? (
+        <div className="text-sm text-zinc-600">No versions yet</div>
+      ) : (
+        versions.map((version, i) => (
+          <div
+            key={version.id}
+            className={`p-3 rounded-lg cursor-pointer transition ${
+              currentVersion === version.id ? 'bg-zinc-800 border border-zinc-700' : 'bg-zinc-800/30 hover:bg-zinc-800/60'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-zinc-200">v{versions.length - i}</span>
+              <span className="text-xs text-zinc-500">{version.time}</span>
+            </div>
+            <p className="text-xs text-zinc-400 mb-2 line-clamp-2">{version.prompt}</p>
+            {currentVersion !== version.id && (
+              <button
+                onClick={() => onRestore(version)}
+                className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+              >
+                <Undo2 className="w-3 h-3" />
+                Restore
+              </button>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+// Main Workspace Component
+const Workspace = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { user, token } = useAuth();
+  
+  const [files, setFiles] = useState(DEFAULT_FILES);
+  const [activeFile, setActiveFile] = useState('/App.js');
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [selectedModel, setSelectedModel] = useState('auto');
+  const [logs, setLogs] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [activePanel, setActivePanel] = useState('preview');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [currentVersion, setCurrentVersion] = useState(null);
+  
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const fileInputRef = useRef(null);
+  const chatEndRef = useRef(null);
+
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      
-      recognitionRef.current.onresult = (event) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          }
-        }
-        if (finalTranscript) {
-          setInput(prev => prev + ' ' + finalTranscript);
-        }
-      };
-      
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
-      };
+    const initialPrompt = searchParams.get('prompt');
+    if (initialPrompt) {
+      setInput(initialPrompt);
+      setTimeout(() => handleBuild(initialPrompt), 500);
     }
   }, []);
 
-  // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Process initial prompt
-  useEffect(() => {
-    if (initialPrompt) {
-      setInput(initialPrompt);
-      setTimeout(() => handleSubmit(null, initialPrompt), 500);
-    }
-  }, []);
+  const addLog = (message, type = 'info', agent = null) => {
+    const now = new Date();
+    const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    setLogs(prev => [...prev, { message, type, time, agent }]);
+  };
 
-  const toggleRecording = () => {
-    if (isRecording) {
-      recognitionRef.current?.stop();
-      setIsRecording(false);
-    } else {
-      recognitionRef.current?.start();
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+        await transcribeAudio(blob);
+      };
+      
+      recorder.start();
+      setMediaRecorder(recorder);
       setIsRecording(true);
+      addLog('Voice recording started...', 'info', 'voice');
+    } catch (err) {
+      addLog('Microphone access denied', 'error', 'voice');
     }
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      addLog('Processing voice input...', 'info', 'voice');
+    }
+  };
+
+  const transcribeAudio = async (blob) => {
+    try {
+      const formData = new FormData();
+      formData.append('audio', blob, 'recording.webm');
+      
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.post(`${API}/voice/transcribe`, formData, {
+        headers: { ...headers, 'Content-Type': 'multipart/form-data' },
+        timeout: 30000
+      });
+      
+      if (response.data.text) {
+        setInput(response.data.text);
+        addLog(`Transcribed: "${response.data.text}"`, 'success', 'voice');
+      }
+    } catch (err) {
+      addLog('Failed to transcribe audio', 'error', 'voice');
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    const validFiles = selectedFiles.filter(f => 
+      f.type.startsWith('image/') || 
+      f.type === 'application/pdf' ||
+      f.type.startsWith('text/')
+    );
     
-    if (file.type.startsWith('image/')) {
+    validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const base64 = e.target.result;
-        setMessages(prev => [...prev, { 
-          role: 'user', 
-          content: 'Build UI matching this image:',
-          image: base64
+        setAttachedFiles(prev => [...prev, {
+          name: file.name,
+          type: file.type,
+          data: e.target.result,
+          size: file.size
         }]);
-        handleImageToCode(base64);
+        addLog(`Attached: ${file.name}`, 'info', 'files');
       };
-      reader.readAsDataURL(file);
-    }
+      if (file.type.startsWith('image/')) {
+        reader.readAsDataURL(file);
+      } else {
+        reader.readAsText(file);
+      }
+    });
   };
 
-  const handleImageToCode = async (imageData) => {
-    setIsBuilding(true);
-    addConsole('Processing uploaded image...', 'info');
-    
-    try {
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.post(`${API}/ai/chat`, {
-        message: `I have an image of a UI design. Create a pixel-perfect React component with Tailwind CSS that matches this design exactly. The image shows: [User uploaded image]. Create a modern, responsive version. Respond with ONLY the complete React code.`,
-        session_id: sessionId,
-        model: 'gpt-4o'
-      }, { headers, timeout: 60000 });
-      
-      const code = response.data.response.replace(/```jsx?/g, '').replace(/```/g, '').trim();
-      updateFile('src/App.jsx', code);
-      saveVersion('Image to code');
-      
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'I\'ve created the UI based on your image. Check the preview.'
-      }]);
-      addConsole('Image processed successfully', 'success');
-    } catch (error) {
-      addConsole('Failed to process image: ' + error.message, 'error');
-    } finally {
-      setIsBuilding(false);
-    }
+  const removeFile = (index) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (ev) => handleImageToCode(ev.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const addConsole = (message, type = 'log') => {
-    const timestamp = new Date().toLocaleTimeString();
-    setConsoleOutput(prev => [...prev, { message, type, timestamp }]);
-  };
-
-  const updateFile = (path, content) => {
-    setFiles(prev => ({ ...prev, [path]: content }));
-    setSelectedFile(path);
-  };
-
-  const saveVersion = (label) => {
-    setVersions(prev => [...prev, {
-      id: Date.now(),
-      label,
-      timestamp: new Date().toISOString(),
-      files: { ...files }
-    }]);
-  };
-
-  const restoreVersion = (version) => {
-    setFiles(version.files);
-    addConsole(`Restored to: ${version.label}`, 'info');
-  };
-
-  const handleSubmit = async (e, overrideInput = null) => {
-    e?.preventDefault();
-    const prompt = overrideInput || input;
+  const handleBuild = async (promptOverride = null) => {
+    const prompt = promptOverride || input;
     if (!prompt.trim() || isBuilding) return;
 
     setInput('');
     setIsBuilding(true);
     setBuildProgress(0);
-    setMessages(prev => [...prev, { role: 'user', content: prompt }]);
-    addConsole(`Building: ${prompt}`, 'info');
+    
+    const userMessage = { 
+      role: 'user', 
+      content: prompt,
+      attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setAttachedFiles([]);
+    
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Building...', isBuilding: true }]);
 
-    // Extract project name from first prompt
-    if (messages.length === 0) {
-      setProjectName(prompt.slice(0, 40));
-    }
+    addLog('Starting build process...', 'info', 'planner');
+    
+    const agents = [
+      { name: 'Planner', delay: 300 },
+      { name: 'Frontend', delay: 500 },
+      { name: 'Styling', delay: 400 },
+      { name: 'Testing', delay: 300 },
+      { name: 'Finalizing', delay: 200 }
+    ];
 
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
-      // Progress simulation
-      const progressInterval = setInterval(() => {
-        setBuildProgress(prev => Math.min(prev + Math.random() * 20, 90));
-      }, 300);
+      let progress = 0;
+      for (const agent of agents) {
+        addLog(`${agent.name} agent processing...`, 'info', agent.name.toLowerCase());
+        await new Promise(r => setTimeout(r, agent.delay));
+        progress += 20;
+        setBuildProgress(Math.min(progress, 90));
+      }
 
-      const modelParam = selectedModel === 'auto' ? 'auto' : selectedModel;
-      
+      let messageContent = `Create a complete, production-ready React application for: "${prompt}". 
+Use React hooks and Tailwind CSS. Make it modern, responsive, and functional.
+Include all necessary components and styling.
+Respond with ONLY the complete App.js code, nothing else.`;
+
+      if (attachedFiles.length > 0) {
+        const imageFiles = attachedFiles.filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length > 0) {
+          messageContent += `\n\nThe user has attached ${imageFiles.length} image(s) as reference. Try to match the design style.`;
+        }
+      }
+
       const response = await axios.post(`${API}/ai/chat`, {
-        message: `You are CrucibAI. Create a complete React application for: "${prompt}"
-
-Current code:
-${files['src/App.jsx']}
-
-Requirements:
-- Use React functional components with hooks
-- Use Tailwind CSS for styling
-- Make it fully functional and modern
-- Include ALL necessary imports
-
-Respond with ONLY the complete code. No explanations.`,
+        message: messageContent,
         session_id: sessionId,
-        model: modelParam
-      }, { headers, timeout: 60000 });
+        model: selectedModel
+      }, { headers, timeout: 90000 });
 
-      clearInterval(progressInterval);
       setBuildProgress(100);
+      addLog('Build completed successfully!', 'success', 'deploy');
 
-      const code = response.data.response.replace(/```jsx?/g, '').replace(/```/g, '').trim();
-      
-      updateFile('src/App.jsx', code);
-      saveVersion(prompt.slice(0, 30));
-      
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `Done. Used ${response.data.model_used}. What would you like to change?`
-      }]);
-      
-      addConsole(`Build complete (${response.data.model_used})`, 'success');
+      let code = response.data.response;
+      code = code.replace(/```jsx?/g, '').replace(/```/g, '').trim();
+
+      const newFiles = { ...files, '/App.js': { code } };
+      setFiles(newFiles);
+
+      const newVersion = {
+        id: `v_${Date.now()}`,
+        prompt,
+        files: newFiles,
+        time: new Date().toLocaleTimeString()
+      };
+      setVersions(prev => [newVersion, ...prev]);
+      setCurrentVersion(newVersion.id);
+
+      setMessages(prev => prev.map((msg, i) => 
+        i === prev.length - 1 
+          ? { role: 'assistant', content: `Done! Your app is ready. What would you like to change?`, hasCode: true }
+          : msg
+      ));
 
     } catch (error) {
-      addConsole('Build failed: ' + error.message, 'error');
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Something went wrong. Try again.'
-      }]);
+      addLog(`Build failed: ${error.message}`, 'error', 'system');
+      setMessages(prev => prev.map((msg, i) => 
+        i === prev.length - 1 
+          ? { role: 'assistant', content: 'Something went wrong. Please try again.', error: true }
+          : msg
+      ));
     } finally {
       setIsBuilding(false);
-      setBuildProgress(0);
     }
   };
 
-  const downloadProject = () => {
-    const content = Object.entries(files)
-      .map(([name, code]) => `// === ${name} ===\n\n${code}`)
-      .join('\n\n');
+  const handleModify = async () => {
+    if (!input.trim() || isBuilding) return;
+
+    const request = input.trim();
+    setInput('');
+    setIsBuilding(true);
     
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${projectName.replace(/\s+/g, '-').toLowerCase()}.txt`;
-    a.click();
-  };
+    setMessages(prev => [...prev, { role: 'user', content: request }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Updating...', isBuilding: true }]);
+    
+    addLog('Processing modification request...', 'info', 'planner');
 
-  const deployProject = () => {
-    addConsole('Deploying to Vercel...', 'info');
-    setTimeout(() => {
-      addConsole('Deployed: https://' + projectName.replace(/\s+/g, '-').toLowerCase() + '.vercel.app', 'success');
-    }, 2000);
-  };
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      const response = await axios.post(`${API}/ai/chat`, {
+        message: `Current code:\n\n${files['/App.js'].code}\n\nModify it to: "${request}"\n\nRespond with ONLY the complete updated App.js code, nothing else.`,
+        session_id: sessionId,
+        model: selectedModel
+      }, { headers, timeout: 90000 });
 
-  // File tree component
-  const FileTree = () => {
-    const tree = Object.keys(files).reduce((acc, path) => {
-      const parts = path.split('/');
-      let current = acc;
-      parts.forEach((part, i) => {
-        if (i === parts.length - 1) {
-          current[part] = { type: 'file', path };
-        } else {
-          current[part] = current[part] || { type: 'folder', children: {} };
-          current = current[part].children;
-        }
-      });
-      return acc;
-    }, {});
+      let newCode = response.data.response;
+      newCode = newCode.replace(/```jsx?/g, '').replace(/```/g, '').trim();
 
-    const renderNode = (name, node, depth = 0) => {
-      if (node.type === 'file') {
-        return (
-          <button
-            key={node.path}
-            onClick={() => setSelectedFile(node.path)}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-zinc-800 rounded ${
-              selectedFile === node.path ? 'bg-zinc-800 text-white' : 'text-zinc-400'
-            }`}
-            style={{ paddingLeft: `${depth * 12 + 12}px` }}
-          >
-            <File className="w-4 h-4" />
-            {name}
-          </button>
-        );
+      if (newCode.includes('import') || newCode.includes('function') || newCode.includes('const')) {
+        const newFiles = { ...files, '/App.js': { code: newCode } };
+        setFiles(newFiles);
+        
+        const newVersion = {
+          id: `v_${Date.now()}`,
+          prompt: request,
+          files: newFiles,
+          time: new Date().toLocaleTimeString()
+        };
+        setVersions(prev => [newVersion, ...prev]);
+        setCurrentVersion(newVersion.id);
+        
+        addLog('Modification applied successfully!', 'success', 'frontend');
+        
+        setMessages(prev => prev.map((msg, i) => 
+          i === prev.length - 1 ? { role: 'assistant', content: 'Updated! What else would you like to change?', hasCode: true } : msg
+        ));
+      } else {
+        setMessages(prev => prev.map((msg, i) => 
+          i === prev.length - 1 ? { role: 'assistant', content: response.data.response } : msg
+        ));
       }
-      return (
-        <div key={name}>
-          <div 
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-500"
-            style={{ paddingLeft: `${depth * 12 + 12}px` }}
-          >
-            <Folder className="w-4 h-4" />
-            {name}
-          </div>
-          {node.children && Object.entries(node.children).map(([n, child]) => 
-            renderNode(n, child, depth + 1)
-          )}
-        </div>
-      );
-    };
+    } catch (error) {
+      addLog(`Modification failed: ${error.message}`, 'error', 'system');
+      setMessages(prev => prev.map((msg, i) => 
+        i === prev.length - 1 ? { role: 'assistant', content: 'Error updating. Try again.', error: true } : msg
+      ));
+    } finally {
+      setIsBuilding(false);
+    }
+  };
 
-    return (
-      <div className="py-2">
-        {Object.entries(tree).map(([name, node]) => renderNode(name, node))}
-      </div>
-    );
+  const handleSubmit = (e) => {
+    e?.preventDefault();
+    if (!input.trim()) return;
+    
+    if (versions.length > 0) {
+      handleModify();
+    } else {
+      handleBuild();
+    }
+  };
+
+  const restoreVersion = (version) => {
+    setFiles(version.files);
+    setCurrentVersion(version.id);
+    addLog(`Restored to version from ${version.time}`, 'info', 'history');
+  };
+
+  const downloadCode = () => {
+    Object.entries(files).forEach(([name, { code }]) => {
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name.replace('/', '');
+      a.click();
+    });
+    addLog('Files downloaded', 'success', 'export');
+  };
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(files[activeFile].code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCodeChange = (value) => {
+    setFiles(prev => ({
+      ...prev,
+      [activeFile]: { code: value }
+    }));
   };
 
   return (
-    <div 
-      className="h-screen flex flex-col bg-[#0A0A0B] text-white overflow-hidden"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* Drag overlay */}
-      {isDragging && (
-        <div className="absolute inset-0 z-50 bg-blue-500/20 border-2 border-dashed border-blue-500 flex items-center justify-center">
-          <div className="text-xl font-medium">Drop image to generate UI</div>
-        </div>
-      )}
-
+    <div className="h-screen bg-[#0A0A0B] text-white flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="h-12 bg-[#141415] border-b border-zinc-800 flex items-center justify-between px-4 flex-shrink-0">
+      <header className="h-14 border-b border-zinc-800 flex items-center justify-between px-4 flex-shrink-0">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="text-lg font-semibold">
-            CrucibAI
+          <button 
+            onClick={() => navigate('/')}
+            data-testid="back-button"
+            className="flex items-center gap-2 text-zinc-400 hover:text-white transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-lg font-semibold">CrucibAI</span>
           </button>
-          <span className="text-zinc-600">/</span>
-          <span className="text-sm text-zinc-400">{projectName}</span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {/* Model selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowModelPicker(!showModelPicker)}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg transition"
-            >
-              <Settings className="w-3 h-3" />
-              {models.find(m => m.id === selectedModel)?.name || 'Auto'}
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            
-            {showModelPicker && (
-              <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
-                {models.map(model => (
-                  <button
-                    key={model.id}
-                    onClick={() => { setSelectedModel(model.id); setShowModelPicker(false); }}
-                    className={`w-full p-3 text-left hover:bg-zinc-800 transition ${
-                      selectedModel === model.id ? 'bg-zinc-800' : ''
-                    }`}
-                  >
-                    <div className="text-sm font-medium flex items-center justify-between">
-                      {model.name}
-                      {selectedModel === model.id && <Check className="w-4 h-4 text-green-500" />}
-                    </div>
-                    <div className="text-xs text-zinc-500">{model.desc}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
           
-          <button onClick={downloadProject} className="flex items-center gap-2 px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">
-            <Download className="w-3 h-3" />
-            Export
+          <div className="h-4 w-px bg-zinc-800" />
+          
+          <div className="text-sm text-zinc-500">
+            {versions.length > 0 ? `v${versions.length}` : 'New Project'}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <ModelSelector selectedModel={selectedModel} onSelectModel={setSelectedModel} />
+          
+          <button
+            onClick={downloadCode}
+            data-testid="export-button"
+            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
           </button>
-          <button onClick={deployProject} className="flex items-center gap-2 px-3 py-1.5 text-xs bg-white text-black hover:bg-zinc-200 rounded-lg transition font-medium">
-            <Rocket className="w-3 h-3" />
-            Deploy
+          
+          <button 
+            data-testid="github-button"
+            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+          >
+            <Github className="w-4 h-4" />
+            <span className="hidden sm:inline">Push</span>
+          </button>
+          
+          <button 
+            data-testid="deploy-button"
+            className="flex items-center gap-2 px-4 py-1.5 bg-white text-black rounded-lg text-sm font-medium hover:bg-zinc-200 transition"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>Deploy</span>
           </button>
         </div>
       </header>
 
-      {/* Progress bar */}
-      {isBuilding && (
-        <div className="h-0.5 bg-zinc-800">
-          <motion.div 
-            className="h-full bg-blue-500"
-            initial={{ width: 0 }}
-            animate={{ width: `${buildProgress}%` }}
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar - File Explorer */}
+        <div className="w-56 border-r border-zinc-800 flex-shrink-0 overflow-y-auto">
+          <FileTree 
+            files={files} 
+            activeFile={activeFile} 
+            onSelectFile={setActiveFile}
           />
         </div>
-      )}
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Files */}
-        <div className={`${showSidebar ? 'w-56' : 'w-0'} flex-shrink-0 bg-[#111112] border-r border-zinc-800 overflow-hidden transition-all`}>
-          <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-zinc-500 uppercase tracking-wider">Files</span>
-            <button className="p-1 hover:bg-zinc-800 rounded">
-              <Plus className="w-3 h-3 text-zinc-500" />
-            </button>
-          </div>
-          <FileTree />
-          
-          {/* Version history */}
-          {versions.length > 0 && (
-            <div className="border-t border-zinc-800">
-              <div className="p-3 flex items-center gap-2 text-xs text-zinc-500 uppercase tracking-wider">
-                <Clock className="w-3 h-3" />
-                History
-              </div>
-              <div className="max-h-32 overflow-y-auto">
-                {versions.slice(-5).reverse().map(v => (
-                  <button
-                    key={v.id}
-                    onClick={() => restoreVersion(v)}
-                    className="w-full px-3 py-2 text-left text-xs text-zinc-400 hover:bg-zinc-800 flex items-center gap-2"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Editor */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Tabs */}
-          <div className="h-10 bg-[#111112] border-b border-zinc-800 flex items-center px-2">
-            <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="p-1.5 hover:bg-zinc-800 rounded mr-2"
-            >
-              {showSidebar ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-            {Object.keys(files).map(file => (
+        {/* Code Editor */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Editor Tabs */}
+          <div className="h-10 border-b border-zinc-800 flex items-center px-2 gap-1 flex-shrink-0">
+            {Object.keys(files).map(filename => (
               <button
-                key={file}
-                onClick={() => setSelectedFile(file)}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-t ${
-                  selectedFile === file 
-                    ? 'bg-[#1E1E1E] text-white' 
+                key={filename}
+                onClick={() => setActiveFile(filename)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                  activeFile === filename 
+                    ? 'bg-zinc-800 text-white' 
                     : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                <File className="w-3 h-3" />
-                {file.split('/').pop()}
+                <FileCode className="w-3.5 h-3.5" />
+                {filename.replace('/', '')}
               </button>
             ))}
+            
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={copyCode}
+                className="p-1.5 text-zinc-500 hover:text-white transition"
+                title="Copy code"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
-          
+
           {/* Monaco Editor */}
           <div className="flex-1">
             <Editor
               height="100%"
-              language={selectedFile?.endsWith('.css') ? 'css' : selectedFile?.endsWith('.json') ? 'json' : 'javascript'}
-              value={files[selectedFile] || ''}
-              onChange={(value) => setFiles(prev => ({ ...prev, [selectedFile]: value || '' }))}
+              language={activeFile.endsWith('.css') ? 'css' : 'javascript'}
+              value={files[activeFile]?.code || ''}
+              onChange={handleCodeChange}
               theme="vs-dark"
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,
                 lineNumbers: 'on',
                 scrollBeyondLastLine: false,
-                automaticLayout: true,
+                wordWrap: 'on',
                 tabSize: 2,
-                padding: { top: 16 }
+                padding: { top: 16 },
               }}
             />
           </div>
         </div>
 
-        {/* Right panel - Preview + Chat */}
-        <div className="w-96 flex flex-col border-l border-zinc-800 bg-[#111112]">
-          {/* Panel tabs */}
-          <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-2">
+        {/* Right Panel - Preview / Console / History */}
+        <div className="w-[45%] border-l border-zinc-800 flex flex-col flex-shrink-0">
+          {/* Panel Tabs */}
+          <div className="h-10 border-b border-zinc-800 flex items-center px-2 gap-1 flex-shrink-0">
             <button
               onClick={() => setActivePanel('preview')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded ${
-                activePanel === 'preview' ? 'bg-zinc-800 text-white' : 'text-zinc-500'
+              data-testid="preview-tab"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                activePanel === 'preview' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              <Monitor className="w-3 h-3" />
+              <Eye className="w-3.5 h-3.5" />
               Preview
             </button>
             <button
               onClick={() => setActivePanel('console')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded ${
-                activePanel === 'console' ? 'bg-zinc-800 text-white' : 'text-zinc-500'
+              data-testid="console-tab"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                activePanel === 'console' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              <Terminal className="w-3 h-3" />
+              <Terminal className="w-3.5 h-3.5" />
               Console
             </button>
+            <button
+              onClick={() => setActivePanel('history')}
+              data-testid="history-tab"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                activePanel === 'history' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              History
+            </button>
+            
+            <div className="ml-auto">
+              <button
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                className="p-1.5 text-zinc-500 hover:text-white transition"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
-          {/* Preview */}
-          {activePanel === 'preview' && (
-            <div className="flex-1 bg-white p-4">
-              <div className="h-full rounded-lg bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center text-zinc-400 text-sm">
-                Live preview coming soon
-              </div>
-            </div>
-          )}
-
-          {/* Console */}
-          {activePanel === 'console' && (
-            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
-              {consoleOutput.map((log, i) => (
-                <div key={i} className={`py-1 ${
-                  log.type === 'error' ? 'text-red-400' :
-                  log.type === 'success' ? 'text-green-400' :
-                  'text-zinc-400'
-                }`}>
-                  <span className="text-zinc-600">[{log.timestamp}]</span> {log.message}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Chat */}
-          <div className="h-72 border-t border-zinc-800 flex flex-col">
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm ${
-                    msg.role === 'user' ? 'bg-white text-black' : 'bg-zinc-800 text-zinc-200'
-                  }`}>
-                    {msg.image && (
-                      <img src={msg.image} alt="Uploaded" className="max-w-full rounded mb-2" />
-                    )}
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              {isBuilding && (
-                <div className="flex justify-start">
-                  <div className="bg-zinc-800 px-3 py-2 rounded-lg">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Input */}
-            <form onSubmit={handleSubmit} className="p-3 border-t border-zinc-800">
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  accept="image/*"
-                  className="hidden"
+          {/* Panel Content */}
+          <div className="flex-1 overflow-hidden">
+            {activePanel === 'preview' && (
+              <SandpackProvider
+                template="react"
+                files={files}
+                theme="dark"
+                options={{
+                  externalResources: ['https://cdn.tailwindcss.com'],
+                }}
+              >
+                <SandpackPreview
+                  showNavigator={false}
+                  showRefreshButton={true}
+                  style={{ height: '100%' }}
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition"
-                  title="Upload image"
-                >
-                  <Image className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  className={`p-2 rounded-lg transition ${
-                    isRecording ? 'bg-red-500 text-white' : 'bg-zinc-800 hover:bg-zinc-700'
-                  }`}
-                  title={isRecording ? 'Stop recording' : 'Voice input'}
-                >
-                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Describe changes..."
-                  className="flex-1 px-3 py-2 bg-zinc-800 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-600"
-                  disabled={isBuilding}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isBuilding}
-                  className="p-2 bg-white text-black rounded-lg disabled:opacity-30 hover:bg-zinc-200 transition"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </form>
+              </SandpackProvider>
+            )}
+            
+            {activePanel === 'console' && (
+              <ConsolePanel logs={logs} />
+            )}
+            
+            {activePanel === 'history' && (
+              <VersionHistory 
+                versions={versions} 
+                onRestore={restoreVersion}
+                currentVersion={currentVersion}
+              />
+            )}
           </div>
         </div>
+      </div>
+
+      {/* Bottom Chat Panel */}
+      <div className="border-t border-zinc-800 p-4 flex-shrink-0">
+        {isBuilding && (
+          <div className="mb-3">
+            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${buildProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {messages.length > 0 && (
+          <div className="max-h-32 overflow-y-auto mb-3 space-y-2">
+            {messages.slice(-4).map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                  msg.role === 'user' 
+                    ? 'bg-zinc-700 text-white' 
+                    : msg.error 
+                      ? 'bg-red-500/10 text-red-400'
+                      : 'bg-zinc-800 text-zinc-300'
+                }`}>
+                  {msg.isBuilding ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
+                      <span>{msg.content}</span>
+                    </div>
+                  ) : (
+                    <span>{msg.content}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+        )}
+
+        {attachedFiles.length > 0 && (
+          <div className="flex gap-2 mb-3 flex-wrap">
+            {attachedFiles.map((file, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 rounded-lg text-sm">
+                {file.type.startsWith('image/') ? (
+                  <Image className="w-4 h-4 text-blue-400" />
+                ) : (
+                  <FileText className="w-4 h-4 text-green-400" />
+                )}
+                <span className="text-zinc-300 max-w-[150px] truncate">{file.name}</span>
+                <button onClick={() => removeFile(i)} className="text-zinc-500 hover:text-white">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="flex gap-3">
+          <div className="flex-1 flex items-center gap-2 px-4 py-3 bg-zinc-800/50 rounded-xl">
+            <button
+              type="button"
+              onClick={isRecording ? stopRecording : startRecording}
+              data-testid="voice-input-button"
+              className={`p-1.5 rounded-lg transition ${
+                isRecording ? 'bg-red-500/20 text-red-400' : 'text-zinc-500 hover:text-white hover:bg-zinc-700'
+              }`}
+              title={isRecording ? 'Stop recording' : 'Voice input'}
+            >
+              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="file-attach-button"
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-700 transition"
+              title="Attach file"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.txt,.md"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            
+            <div className="h-4 w-px bg-zinc-700" />
+            
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              data-testid="chat-input"
+              placeholder={versions.length > 0 ? "Describe changes..." : "Describe what you want to build..."}
+              className="flex-1 bg-transparent text-white placeholder-zinc-500 outline-none text-sm"
+              disabled={isBuilding}
+            />
+          </div>
+          
+          <button
+            type="submit"
+            disabled={!input.trim() || isBuilding}
+            data-testid="submit-button"
+            className="px-5 py-3 bg-white text-black rounded-xl text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 transition flex items-center gap-2"
+          >
+            {isBuilding ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>{versions.length > 0 ? 'Update' : 'Build'}</span>
+              </>
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
