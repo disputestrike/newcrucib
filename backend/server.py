@@ -348,6 +348,113 @@ async def hybrid_search(data: SearchQuery, user: dict = Depends(get_optional_use
         logger.error(f"Search error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== VOICE TRANSCRIPTION ====================
+
+@api_router.post("/voice/transcribe")
+async def transcribe_voice(
+    audio: UploadFile = File(...),
+    user: dict = Depends(get_optional_user)
+):
+    """Transcribe voice audio to text using OpenAI Whisper"""
+    try:
+        from emergentintegrations.llm.openai import OpenAISpeechToText
+        
+        # Read audio file
+        audio_content = await audio.read()
+        
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp_file:
+            tmp_file.write(audio_content)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Initialize Whisper
+            stt = OpenAISpeechToText(api_key=EMERGENT_KEY)
+            
+            # Transcribe
+            with open(tmp_path, 'rb') as audio_file:
+                response = await stt.transcribe(
+                    file=audio_file,
+                    model="whisper-1",
+                    response_format="json",
+                    language="en"
+                )
+            
+            text = response.text if hasattr(response, 'text') else str(response)
+            
+            logger.info(f"Voice transcription successful: {text[:50]}...")
+            
+            return {
+                "text": text,
+                "language": "en",
+                "model": "whisper-1"
+            }
+            
+        finally:
+            # Cleanup temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except Exception as e:
+        logger.error(f"Voice transcription error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+# ==================== FILE UPLOAD/ANALYSIS ====================
+
+@api_router.post("/files/analyze")
+async def analyze_file(
+    file: UploadFile = File(...),
+    analysis_type: str = Form("general"),
+    user: dict = Depends(get_optional_user)
+):
+    """Analyze uploaded file (images, text, etc.) using AI"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        content = await file.read()
+        
+        # Handle different file types
+        if file.content_type.startswith('image/'):
+            # For images, encode as base64
+            image_data = base64.b64encode(content).decode('utf-8')
+            prompt = f"Analyze this image and describe what you see. Provide design insights if it's a UI mockup."
+            
+            # Note: For actual image analysis, would need vision model
+            analysis_result = f"Image received: {file.filename} ({len(content)} bytes). Image analysis requires vision model integration."
+            
+        elif file.content_type.startswith('text/') or file.filename.endswith(('.txt', '.md', '.json', '.js', '.py', '.html', '.css')):
+            text_content = content.decode('utf-8')
+            
+            chat = LlmChat(
+                api_key=EMERGENT_KEY,
+                session_id=str(uuid.uuid4()),
+                system_message="You are an expert code and document analyzer."
+            ).with_model("openai", "gpt-4o")
+            
+            prompts = {
+                "general": f"Analyze this file and provide a summary:\n\n{text_content[:4000]}",
+                "code": f"Review this code and provide insights, potential issues, and suggestions:\n\n{text_content[:4000]}",
+                "design": f"If this is UI/design related, describe the design patterns and suggest improvements:\n\n{text_content[:4000]}"
+            }
+            
+            response = await chat.send_message(UserMessage(text=prompts.get(analysis_type, prompts["general"])))
+            analysis_result = response
+            
+        else:
+            analysis_result = f"File type {file.content_type} analysis not fully supported yet."
+        
+        return {
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "size": len(content),
+            "analysis": analysis_result,
+            "analysis_type": analysis_type
+        }
+        
+    except Exception as e:
+        logger.error(f"File analysis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
