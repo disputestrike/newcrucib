@@ -24,11 +24,23 @@ const LandingPage = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  const generateCode = async () => {
+    if (!prompt.trim()) return;
+    navigate('/builder', { state: { prompt: prompt } });
+  };
+
   const handleSendMessage = async (e) => {
     e?.preventDefault();
     if (!chatInput.trim() || chatLoading) return;
 
     const userMessage = chatInput.trim();
+    
+    // If it's a substantial prompt, redirect to builder
+    if (userMessage.length > 20 && (userMessage.toLowerCase().includes('build') || userMessage.toLowerCase().includes('create') || userMessage.toLowerCase().includes('make'))) {
+      navigate('/builder', { state: { prompt: userMessage } });
+      return;
+    }
+
     setChatInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setChatLoading(true);
