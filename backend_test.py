@@ -5,7 +5,7 @@ from datetime import datetime
 import time
 
 class CrucibAITester:
-    def __init__(self, base_url="https://construct-zone-11.preview.emergentagent.com"):
+    def __init__(self, base_url="https://crucibai-builder.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.token = None
