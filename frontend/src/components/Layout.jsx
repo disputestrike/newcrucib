@@ -94,7 +94,7 @@ const Layout = () => {
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
           <Link to="/app" className="flex items-center gap-2">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6" />
+              <Sparkles className="w-6 h-6" />
             </div>
             {sidebarOpen && <span className="text-xl font-bold">AgentForge</span>}
           </Link>
