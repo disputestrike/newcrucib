@@ -4,13 +4,14 @@ import json
 from datetime import datetime
 import time
 
-class AgentForgeAPITester:
+class CrucibAITester:
     def __init__(self, base_url="https://construct-zone-11.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.token = None
         self.user_id = None
         self.project_id = None
+        self.session_id = None
         self.tests_run = 0
         self.tests_passed = 0
         self.failed_tests = []
