@@ -55,7 +55,7 @@ const AuthPage = () => {
           
           <h2 className="text-4xl font-bold text-center mb-4">Build faster with AI</h2>
           <p className="text-gray-400 text-center max-w-md">
-            20 specialized AI agents working together to generate production-ready applications in under 1 hour.
+            Multi-model AI orchestration platform. Chat, code, and deploy with GPT-4o, Claude, and Gemini.
           </p>
           
           <div className="mt-12 grid grid-cols-2 gap-4 max-w-md">
