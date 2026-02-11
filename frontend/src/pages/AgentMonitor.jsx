@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
+import BuildProgress from '../components/BuildProgress';
 
 const AgentMonitor = () => {
   const { id } = useParams();
@@ -14,9 +15,11 @@ const AgentMonitor = () => {
   
   const [project, setProject] = useState(null);
   const [agents, setAgents] = useState([]);
+  const [phases, setPhases] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(true);
+  const [retrying, setRetrying] = useState(false);
 
   const agentLayers = {
     planning: ['Planner', 'Requirements Clarifier', 'Stack Selector'],
@@ -28,14 +31,16 @@ const AgentMonitor = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [projectRes, agentsRes, logsRes] = await Promise.all([
+        const [projectRes, agentsRes, logsRes, phasesRes] = await Promise.all([
           axios.get(`${API}/projects/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
           axios.get(`${API}/agents/status/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API}/projects/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } })
+          axios.get(`${API}/projects/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${API}/projects/${id}/phases`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { phases: [] } }))
         ]);
         setProject(projectRes.data.project);
         setAgents(agentsRes.data.statuses);
         setLogs(logsRes.data.logs);
+        setPhases(phasesRes.data?.phases || []);
         
         if (projectRes.data.project.status === 'completed' || projectRes.data.project.status === 'failed') {
           setPolling(false);
@@ -59,6 +64,21 @@ const AgentMonitor = () => {
 
   const getAgentStatus = (agentName) => {
     return agents.find(a => a.agent_name === agentName) || { status: 'idle', progress: 0, tokens_used: 0 };
+  };
+
+  const handleRetryPhase = async () => {
+    if (retrying || !project?.suggest_retry_phase) return;
+    setRetrying(true);
+    try {
+      await axios.post(`${API}/projects/${id}/retry-phase`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setPolling(true);
+      const projectRes = await axios.get(`${API}/projects/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      setProject(projectRes.data.project);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const getLayerColor = (layer) => {
@@ -93,11 +113,30 @@ const AgentMonitor = () => {
   }
 
   const completedAgents = agents.filter(a => a.status === 'completed').length;
-  const totalAgents = 12;
+  const totalAgents = 20;
   const progress = Math.round((completedAgents / totalAgents) * 100);
 
   return (
     <div className="space-y-6" data-testid="agent-monitor">
+      {project.status === 'running' && (
+        <BuildProgress projectId={id} apiBaseUrl={(API || '').replace(/\/api\/?$/, '')} />
+      )}
+      {/* 10/10: Phase retry suggestion when Quality phase had many failures */}
+      {project.status === 'completed' && (project.suggest_retry_phase != null || project.suggest_retry_reason) && (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-amber-200 text-sm">
+            {project.suggest_retry_reason || 'Quality checks had issues. Retry code generation?'}
+          </p>
+          <button
+            onClick={handleRetryPhase}
+            disabled={retrying}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-black font-medium hover:bg-amber-400 transition disabled:opacity-50"
+          >
+            {retrying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {retrying ? 'Starting…' : 'Retry code generation'}
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -120,6 +159,9 @@ const AgentMonitor = () => {
             {project.status === 'running' && <span className="inline-block w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>}
             {project.status}
           </span>
+          {project.status === 'running' && (
+            <BuildProgress projectId={id} apiBaseUrl={(API || '').replace(/\/api\/?$/, '')} />
+          )}
           {project.live_url && (
             <a
               href={project.live_url}
@@ -144,10 +186,10 @@ const AgentMonitor = () => {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm text-gray-500">Tokens Used</p>
+              <p className="text-sm text-gray-500">Total tokens this run</p>
               <p className="font-bold text-lg flex items-center gap-1">
                 <Zap className="w-4 h-4 text-yellow-500" />
-                {project.tokens_used?.toLocaleString()}
+                {(agents.reduce((sum, a) => sum + (a.tokens_used || 0), 0) || project.tokens_used || 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -165,6 +207,17 @@ const AgentMonitor = () => {
           />
         </div>
         <p className="text-right text-sm text-gray-500 mt-2">{progress}%</p>
+
+        {phases.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <h4 className="text-sm font-medium text-gray-400 mb-2">Build phases</h4>
+            <div className="flex flex-wrap gap-2">
+              {phases.map((p, i) => (
+                <span key={i} className="px-2 py-1 rounded bg-white/10 text-gray-300 text-xs">{typeof p === 'string' ? p : p?.name || p?.title || JSON.stringify(p)}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Agent Grid */}

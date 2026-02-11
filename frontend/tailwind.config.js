@@ -13,6 +13,17 @@ module.exports = {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+  			kimi: {
+  				bg: 'var(--kimi-bg)',
+  				'elevated': 'var(--kimi-bg-elevated)',
+  				card: 'var(--kimi-bg-card)',
+  				input: 'var(--kimi-bg-input)',
+  				text: 'var(--kimi-text)',
+  				muted: 'var(--kimi-text-muted)',
+  				secondary: 'var(--kimi-text-secondary)',
+  				accent: 'var(--kimi-accent)',
+  				border: 'var(--kimi-border)'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -75,6 +86,13 @@ module.exports = {
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
+  		},
+  		fontSize: {
+  			'kimi-hero': ['clamp(2.5rem, 5vw, 4rem)', { lineHeight: '1.1' }],
+  			'kimi-section': ['1.875rem', { lineHeight: '1.2' }],
+  			'kimi-card': ['1.125rem', { lineHeight: '1.3' }],
+  			'kimi-body': ['1rem', { lineHeight: '1.6' }],
+  			'kimi-nav': ['0.875rem', { lineHeight: '1.4' }]
   		}
   	}
   },

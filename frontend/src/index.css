@@ -8,6 +8,20 @@
 @import '@fontsource/inter/500.css';
 @import '@fontsource/jetbrains-mono/400.css';
 
+/* Kimi-style design tokens (public pages + app) */
+:root {
+  --kimi-bg: #000000;
+  --kimi-bg-elevated: #0a0a0a;
+  --kimi-bg-card: #111111;
+  --kimi-bg-input: #141415;
+  --kimi-text: #ffffff;
+  --kimi-text-muted: #d0d0d0;
+  --kimi-text-secondary: #e0e0e0;
+  --kimi-accent: #2196f3;
+  --kimi-border: rgba(255, 255, 255, 0.08);
+  --kimi-grid: rgba(255, 255, 255, 0.03);
+}
+
 :root {
   --background: 0 0% 100%;
   --foreground: 0 0% 9%;
@@ -131,6 +145,25 @@ code, pre, .mono {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Kimi-style glass (frosted) for landing hero */
+.glass-kimi-panel {
+  background: rgba(20, 20, 21, 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.glass-kimi-btn {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+.glass-kimi-btn:hover {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
 /* Neon effects */
 .neon-blue {
   box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
@@ -147,9 +180,18 @@ code, pre, .mono {
 /* Grid pattern background */
 .grid-pattern {
   background-image: 
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--kimi-grid, rgba(255, 255, 255, 0.03)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--kimi-grid, rgba(255, 255, 255, 0.03)) 1px, transparent 1px);
   background-size: 50px 50px;
+}
+
+/* Kimi-style grid for hero/sections (dark) */
+.grid-pattern-kimi {
+  background-color: var(--kimi-bg);
+  background-image: 
+    linear-gradient(var(--kimi-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--kimi-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 /* Tracing beam effect */

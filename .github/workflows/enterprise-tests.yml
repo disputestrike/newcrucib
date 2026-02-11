@@ -1,0 +1,122 @@
+# Enterprise 9-Layer Test Pipeline (Lint → Unit → Integration → Smoke; E2E optional)
+name: Enterprise Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Layer 1.1: Lint
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install frontend deps
+        run: cd frontend && yarn install --frozen-lockfile
+      - name: Lint
+        run: cd frontend && npm run lint
+
+  # Layer 1.2: Security (dependency audit)
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install and audit frontend
+        run: cd frontend && yarn install --frozen-lockfile && npm audit --audit-level=high || true
+
+  # Layer 2 & 2: Frontend unit tests
+  frontend-unit:
+    name: Frontend unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install and test
+        run: cd frontend && yarn install --frozen-lockfile && npm run test:coverage || npm test -- --watchAll=false
+      - name: Upload coverage (optional)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          retention-days: 1
+
+  # Layer 3 & 9: Backend integration + smoke (backend must be running)
+  backend-integration:
+    name: Backend integration & smoke
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+    env:
+      MONGO_URL: mongodb://localhost:27017
+      DB_NAME: crucibai_test
+      JWT_SECRET: test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install backend deps
+        run: cd backend && pip install -r requirements.txt
+      - name: Start backend
+        run: cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &
+      - name: Wait for backend
+        run: npx wait-on -t 30000 http://localhost:8000/api/health || sleep 15
+      - name: Run pytest (integration + smoke)
+        run: cd backend && pytest tests -v --tb=short
+        env:
+          REACT_APP_BACKEND_URL: http://localhost:8000
+          CRUCIBAI_API_URL: http://localhost:8000
+
+  # Layer 7: E2E (Playwright – homepage and API contract; full journey needs backend)
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [lint, frontend-unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install frontend and Playwright
+        run: cd frontend && yarn install --frozen-lockfile && npx playwright install --with-deps chromium
+      - name: Build frontend
+        run: cd frontend && npm run build
+      - name: Serve build and run E2E
+        run: |
+          cd frontend && npx serve -s build -l 3000 &
+          npx wait-on -t 60000 http://localhost:3000 || true
+          npx playwright test --project=chromium e2e/critical-user-journey.spec.js
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          CI: true
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 1

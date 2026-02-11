@@ -1,4 +1,7 @@
 // craco.config.js
+// Force-disable ESLint webpack plugin before any config loads (fixes "defaultMeta" crash)
+process.env.DISABLE_ESLINT_PLUGIN = "true";
+
 const path = require("path");
 require("dotenv").config();
 
@@ -9,16 +12,14 @@ const isDevServer = process.env.NODE_ENV !== "production";
 // Environment variable overrides
 const config = {
   enableHealthCheck: process.env.ENABLE_HEALTH_CHECK === "true",
-  enableVisualEdits: isDevServer, // Only enable during dev server
+  enableVisualEdits: false, // Disabled: babel-metadata-plugin can throw on some files (e.g. LearnPanel, ShortcutCheatsheet)
 };
 
-// Conditionally load visual edits modules only in dev mode
+// Visual edits plugin disabled - babel-metadata-plugin throws on several files (LearnPanel, ShortcutCheatsheet, Workspace).
+// Do not load or add the babel plugin to the build.
 let setupDevServer;
-let babelMetadataPlugin;
-
 if (config.enableVisualEdits) {
   setupDevServer = require("./plugins/visual-edits/dev-server-setup");
-  babelMetadataPlugin = require("./plugins/visual-edits/babel-metadata-plugin");
 }
 
 // Conditionally load health check modules only if enabled
@@ -33,20 +34,21 @@ if (config.enableHealthCheck) {
 }
 
 const webpackConfig = {
-  eslint: {
-    configure: {
-      extends: ["plugin:react-hooks/recommended"],
-      rules: {
-        "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
-      },
-    },
-  },
+  // Disable ESLint plugin entirely (avoids defaultMeta crash; use "npm run lint" separately)
+  eslint: { enable: false },
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+      // Always remove ESLint plugin (fixes defaultMeta crash in child compilation)
+      if (Array.isArray(webpackConfig.plugins)) {
+        webpackConfig.plugins = webpackConfig.plugins.filter((p) => {
+          if (!p || !p.constructor) return true;
+          const name = p.constructor.name || "";
+          return name !== "ESLintWebpackPlugin" && !name.includes("ESLint");
+        });
+      }
 
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {
@@ -70,12 +72,7 @@ const webpackConfig = {
   },
 };
 
-// Only add babel metadata plugin during dev server
-if (config.enableVisualEdits && babelMetadataPlugin) {
-  webpackConfig.babel = {
-    plugins: [babelMetadataPlugin],
-  };
-}
+// Babel metadata plugin removed - was causing "Cannot read properties of null (reading 'traverse')" at build.
 
 webpackConfig.devServer = (devServerConfig) => {
   // Apply visual edits dev server setup only if enabled

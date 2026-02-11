@@ -43,7 +43,7 @@ CrucibAI is an AI-powered app builder where users describe what they want in nat
 - Gemini Flash (Google)
 
 ### ✅ Multi-Model AI Backend
-- Real AI integration via `emergentintegrations`
+- Real AI integration (multi-provider LLM)
 - Auto-selection based on task type
 - Code generation, analysis, RAG capabilities
 
@@ -106,7 +106,7 @@ CrucibAI is an AI-powered app builder where users describe what they want in nat
 - **Live Preview**: Sandpack (CodeSandbox)
 - **Backend**: Python FastAPI
 - **Database**: MongoDB (via Motor)
-- **AI**: emergentintegrations (GPT-4o, Claude, Gemini, Whisper)
+- **AI**: Multi-model (GPT-4o, Claude, Gemini, Whisper)
 
 ---
 
@@ -157,11 +157,13 @@ CrucibAI is an AI-powered app builder where users describe what they want in nat
 ## Upcoming/Future Tasks
 
 ### P1 - Next Phase
-- [ ] Real-time code streaming (character by character)
-- [ ] Error detection and auto-fix
-- [ ] Screenshot to code feature
-- [ ] Actual GitHub integration
-- [ ] Vercel/Netlify deployment
+- [x] Real-time code streaming (character by character) – done via /api/ai/chat/stream
+- [x] Error detection and auto-fix – Auto-fix button after failed build
+- [x] Screenshot to code feature – /api/ai/image-to-code + Workspace flow
+- [x] GitHub export – ZIP + README (create repo, upload); full OAuth push later
+- [x] Vercel/Netlify deployment – ZIP + README for vercel.com/new and netlify.com/drop
+- [ ] Actual GitHub OAuth + API push (optional)
+- [ ] Vercel/Netlify API deploy with user token (optional)
 
 ### P2 - Later
 - [ ] Figma import

@@ -34,7 +34,22 @@ import {
   ExternalLink,
   Github,
   History,
-  Undo2
+  Undo2,
+  Settings,
+  Menu,
+  Globe,
+  Upload,
+  MoreHorizontal,
+  Plus,
+  PanelRightOpen,
+  PanelLeftClose,
+  Search,
+  HelpCircle,
+  Play,
+  SplitSquareVertical,
+  CreditCard,
+  Wrench,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
@@ -80,21 +95,28 @@ root.render(<App />);`,
 };
 
 // File tree component
-const FileTree = ({ files, activeFile, onSelectFile }) => {
+const FileTree = ({ files, activeFile, onSelectFile, onAddFile }) => {
   const getFileIcon = (filename) => {
     if (filename.endsWith('.js') || filename.endsWith('.jsx')) return <FileCode className="w-4 h-4 text-yellow-400" />;
     if (filename.endsWith('.css')) return <FileText className="w-4 h-4 text-blue-400" />;
     if (filename.endsWith('.html')) return <FileText className="w-4 h-4 text-orange-400" />;
-    return <File className="w-4 h-4 text-zinc-400" />;
+    return <File className="w-4 h-4 text-gray-500" />;
   };
 
   const fileList = Object.keys(files).sort();
 
   return (
     <div className="text-sm">
-      <div className="flex items-center gap-2 px-3 py-2 text-zinc-400 text-xs uppercase tracking-wider">
-        <FolderOpen className="w-4 h-4" />
-        <span>Files</span>
+      <div className="flex items-center justify-between gap-2 px-3 py-2 text-gray-500 text-xs uppercase tracking-wider">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="w-4 h-4" />
+          <span>Files</span>
+        </div>
+        {onAddFile && (
+          <button type="button" onClick={onAddFile} className="flex items-center gap-1 text-gray-500 hover:text-gray-900" title="New file">
+            <Plus className="w-3.5 h-3.5" /> New file
+          </button>
+        )}
       </div>
       {fileList.map((filename) => (
         <button
@@ -103,8 +125,8 @@ const FileTree = ({ files, activeFile, onSelectFile }) => {
           data-testid={`file-${filename.replace('/', '')}`}
           className={`w-full flex items-center gap-2 px-4 py-1.5 text-left transition ${
             activeFile === filename
-              ? 'bg-zinc-800 text-white'
-              : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+              ? 'bg-gray-200 text-gray-900'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
           }`}
         >
           {getFileIcon(filename)}
@@ -115,8 +137,8 @@ const FileTree = ({ files, activeFile, onSelectFile }) => {
   );
 };
 
-// Console/Logs component
-const ConsolePanel = ({ logs }) => {
+// Console/Logs component (Terminal)
+const ConsolePanel = ({ logs, placeholder = "Terminal output will appear here. Run a build to see logs." }) => {
   const consoleRef = useRef(null);
 
   useEffect(() => {
@@ -126,22 +148,22 @@ const ConsolePanel = ({ logs }) => {
   }, [logs]);
 
   return (
-    <div ref={consoleRef} className="h-full overflow-auto font-mono text-xs p-3 space-y-1">
+    <div ref={consoleRef} className="h-full overflow-auto font-mono text-xs p-3 space-y-1 bg-white text-gray-800">
       {logs.length === 0 ? (
-        <div className="text-zinc-600">Console output will appear here...</div>
+        <div className="text-gray-500">{placeholder}</div>
       ) : (
         logs.map((log, i) => (
           <div
             key={i}
             className={`flex items-start gap-2 ${
-              log.type === 'error' ? 'text-red-400' :
-              log.type === 'success' ? 'text-green-400' :
-              log.type === 'warning' ? 'text-yellow-400' :
-              'text-zinc-400'
+              log.type === 'error' ? 'text-red-600' :
+              log.type === 'success' ? 'text-green-700' :
+              log.type === 'warning' ? 'text-amber-700' :
+              'text-gray-600'
             }`}
           >
-            <span className="text-zinc-600">[{log.time}]</span>
-            <span className="text-zinc-500">{log.agent || 'system'}:</span>
+            <span className="text-gray-400">[{log.time}]</span>
+            <span className="text-gray-500">{log.agent || 'system'}:</span>
             <span className="flex-1">{log.message}</span>
           </div>
         ))
@@ -150,12 +172,13 @@ const ConsolePanel = ({ logs }) => {
   );
 };
 
-// LLM Selector dropdown
-const ModelSelector = ({ selectedModel, onSelectModel }) => {
+// LLM Selector dropdown – Cursor-style: next to chat, opens upward
+const ModelSelector = ({ selectedModel, onSelectModel, variant = 'default' }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
+  const isChat = variant === 'chat';
+
   const models = [
-    { id: 'auto', name: 'Auto Select', icon: Sparkles, desc: 'Best model for the task' },
+    { id: 'auto', name: 'Auto', icon: Sparkles, desc: 'Best model for the task' },
     { id: 'gpt-4o', name: 'GPT-4o', icon: Zap, desc: 'OpenAI latest' },
     { id: 'claude', name: 'Claude 3.5', icon: Coffee, desc: 'Anthropic Sonnet' },
     { id: 'gemini', name: 'Gemini Flash', icon: RefreshCw, desc: 'Google fast model' },
@@ -166,41 +189,50 @@ const ModelSelector = ({ selectedModel, onSelectModel }) => {
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         data-testid="model-selector"
-        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+        className={`flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 transition ${
+          isChat ? 'h-[42px] px-3 py-2 text-sm' : 'px-3 py-1.5 text-sm'
+        }`}
       >
-        <selected.icon className="w-4 h-4" />
-        <span>{selected.name}</span>
-        <ChevronDown className={`w-3 h-3 transition ${isOpen ? 'rotate-180' : ''}`} />
+        <selected.icon className="w-4 h-4 shrink-0" />
+        <span className="truncate max-w-[100px]">{isChat ? selected.name : selected.name}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition ${isOpen ? 'rotate-180' : ''}`} />
       </button>
-      
+
       <AnimatePresence>
         {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute bottom-full left-0 mb-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-50"
-          >
-            {models.map((model) => (
-              <button
-                key={model.id}
-                onClick={() => { onSelectModel(model.id); setIsOpen(false); }}
-                data-testid={`model-option-${model.id}`}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
-                  selectedModel === model.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/50'
-                }`}
-              >
-                <model.icon className="w-4 h-4" />
-                <div>
-                  <div className="text-sm font-medium">{model.name}</div>
-                  <div className="text-xs text-zinc-500">{model.desc}</div>
-                </div>
-                {selectedModel === model.id && <Check className="w-4 h-4 ml-auto text-green-400" />}
-              </button>
-            ))}
-          </motion.div>
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} aria-hidden />
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="absolute left-0 bottom-full mb-1.5 w-56 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden z-50"
+            >
+              <div className="py-1">
+                {models.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => { onSelectModel(model.id); setIsOpen(false); }}
+                    data-testid={`model-option-${model.id}`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm transition ${
+                      selectedModel === model.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <model.icon className="w-4 h-4 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">{model.name}</div>
+                      <div className="text-xs text-gray-500 truncate">{model.desc}</div>
+                    </div>
+                    {selectedModel === model.id && <Check className="w-4 h-4 shrink-0 text-green-600" />}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
@@ -211,26 +243,26 @@ const ModelSelector = ({ selectedModel, onSelectModel }) => {
 const VersionHistory = ({ versions, onRestore, currentVersion }) => {
   return (
     <div className="p-3 space-y-2 overflow-y-auto h-full">
-      <div className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Version History</div>
+      <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Version History</div>
       {versions.length === 0 ? (
-        <div className="text-sm text-zinc-600">No versions yet</div>
+        <div className="text-sm text-gray-500">No versions yet</div>
       ) : (
         versions.map((version, i) => (
           <div
             key={version.id}
             className={`p-3 rounded-lg cursor-pointer transition ${
-              currentVersion === version.id ? 'bg-zinc-800 border border-zinc-700' : 'bg-zinc-800/30 hover:bg-zinc-800/60'
+              currentVersion === version.id ? 'bg-gray-200 border border-gray-300' : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
             }`}
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-zinc-200">v{versions.length - i}</span>
-              <span className="text-xs text-zinc-500">{version.time}</span>
+              <span className="text-sm font-medium text-gray-800">v{versions.length - i}</span>
+              <span className="text-xs text-gray-500">{version.time}</span>
             </div>
-            <p className="text-xs text-zinc-400 mb-2 line-clamp-2">{version.prompt}</p>
+            <p className="text-xs text-gray-600 mb-2 line-clamp-2">{version.prompt}</p>
             {currentVersion !== version.id && (
               <button
                 onClick={() => onRestore(version)}
-                className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 <Undo2 className="w-3 h-3" />
                 Restore
@@ -247,6 +279,7 @@ const VersionHistory = ({ versions, onRestore, currentVersion }) => {
 const Workspace = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { user, token } = useAuth();
   
   const [files, setFiles] = useState(DEFAULT_FILES);
@@ -255,8 +288,9 @@ const Workspace = () => {
   const [messages, setMessages] = useState([]);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
-  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [sessionId, setSessionId] = useState(() => `session_${Date.now()}`);
   const [selectedModel, setSelectedModel] = useState('auto');
+  const [autoLevel, setAutoLevel] = useState('balanced'); // quick | balanced | deep
   const [logs, setLogs] = useState([]);
   const [copied, setCopied] = useState(false);
   const [activePanel, setActivePanel] = useState('preview');
@@ -265,17 +299,118 @@ const Workspace = () => {
   const [currentVersion, setCurrentVersion] = useState(null);
   
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef(null);
   
   const [attachedFiles, setAttachedFiles] = useState([]);
+  const [useStreaming, setUseStreaming] = useState(true);
+  const [lastError, setLastError] = useState(null);
+  const [currentPhase, setCurrentPhase] = useState('');
+  const [buildPhases, setBuildPhases] = useState([]);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
+  const [agentsActivity, setAgentsActivity] = useState([]);
+  const [chatMaximized, setChatMaximized] = useState(false);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [lastTokensUsed, setLastTokensUsed] = useState(0);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false); // collapsed by default; View → "Show code / files" for devs
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+  const [splitEditor, setSplitEditor] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState(null); // 'file' | 'edit' | 'view' | 'go' | 'run' | 'terminal' | 'help' | null
+  const [toolsReport, setToolsReport] = useState(null); // { type: 'validate'|'security'|'a11y', data }
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [nextSuggestions, setNextSuggestions] = useState([]);
+  const [buildMode, setBuildMode] = useState('agent'); // 'quick' | 'plan' | 'agent' | 'thinking' | 'swarm'
+  const [qualityGateResult, setQualityGateResult] = useState(null); // { passed, score, verdict } after build
+  const [tokensPerStep, setTokensPerStep] = useState({ plan: 0, generate: 0 });
+  const [showDeployModal, setShowDeployModal] = useState(false);
   const fileInputRef = useRef(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
+    axios.get(`${API}/build/phases`).then(r => setBuildPhases(r.data.phases || [])).catch(() => {});
+  }, []);
+
+  // Initial terminal message so panel isn't empty
+  useEffect(() => {
+    addLog('Workspace ready. Use the chat to build or update your app. Build output will appear here.', 'info', 'system');
+  }, []);
+
+  useEffect(() => {
+    const stateFiles = location.state?.initialFiles;
+    if (stateFiles && typeof stateFiles === 'object' && Object.keys(stateFiles).length > 0) {
+      setFiles(stateFiles);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (token) {
+      axios.get(`${API}/agents/activity`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => setAgentsActivity(r.data.activities || []))
+        .catch(() => {});
+    }
+  }, [token, messages.length]);
+
+  // Wire GET /ai/chat/history so session history can be loaded (e.g. on "New Agent" we keep sessionId; history loads for current session)
+  useEffect(() => {
+    if (!sessionId) return;
+    axios.get(`${API}/ai/chat/history/${encodeURIComponent(sessionId)}`)
+      .then(r => {
+        const list = r.data?.history || [];
+        if (list.length > 0 && messages.length === 0) {
+          const asMessages = list.map(h => ({ role: h.role || 'assistant', content: h.message || h.content || '' }));
+          setMessages(asMessages);
+        }
+      })
+      .catch(() => {});
+  }, [sessionId]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'e') {
+        e.preventDefault();
+        setChatMaximized(prev => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
+        e.preventDefault();
+        setActivePanel('console');
+        setRightSidebarOpen(true);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        setFileSearchOpen(prev => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
+        e.preventDefault();
+        window.open('/workspace', '_blank');
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        setSessionId(`session_${Date.now()}`);
+        setMessages([]);
+        setMenuAnchor(null);
+      }
+      if (e.key === 'Escape') {
+        setCommandPaletteOpen(false);
+        setFileSearchOpen(false);
+        setMenuAnchor(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
     const initialPrompt = searchParams.get('prompt');
-    if (initialPrompt) {
-      setInput(initialPrompt);
-      setTimeout(() => handleBuild(initialPrompt), 500);
+    const initialFiles = location.state?.initialAttachedFiles;
+    if (initialPrompt || (initialFiles?.length && initialFiles.every(f => f.type?.startsWith?.('image/')))) {
+      if (initialPrompt) setInput(initialPrompt);
+      if (initialFiles?.length) setAttachedFiles(initialFiles);
+      setTimeout(() => handleBuild(initialPrompt || null, initialFiles || null), 500);
     }
   }, []);
 
@@ -291,54 +426,75 @@ const Workspace = () => {
 
   const startRecording = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        addLog('Microphone not supported in this browser.', 'error', 'voice');
+        return;
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        addLog('Voice recording not supported. Try Chrome or Firefox.', 'error', 'voice');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+      const mimeType = mimeTypes.find(mt => MediaRecorder.isTypeSupported(mt)) || 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
       const chunks = [];
-      
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        stream.getTracks().forEach(track => track.stop());
-        await transcribeAudio(blob);
+        stream.getTracks().forEach(t => t.stop());
+        setIsRecording(false);
+        const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+        if (blob.size < 100) {
+          addLog('Recording too short. Speak for at least a second.', 'error', 'voice');
+          return;
+        }
+        const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+        setIsTranscribing(true);
+        addLog('Transcribing...', 'info', 'voice');
+        await transcribeAudio(blob, ext);
       };
-      
-      recorder.start();
-      setMediaRecorder(recorder);
+      recorder.start(200);
+      mediaRecorderRef.current = { recorder, stream };
       setIsRecording(true);
-      addLog('Voice recording started...', 'info', 'voice');
+      addLog('Listening...', 'info', 'voice');
     } catch (err) {
-      addLog('Microphone access denied', 'error', 'voice');
+      setIsRecording(false);
+      addLog(err?.name === 'NotAllowedError' ? 'Microphone access denied' : 'Could not start microphone', 'error', 'voice');
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-      setIsRecording(false);
-      addLog('Processing voice input...', 'info', 'voice');
+    const ref = mediaRecorderRef.current;
+    if (ref?.recorder?.state === 'recording') {
+      ref.recorder.stop();
     }
+    if (ref?.stream) ref.stream.getTracks().forEach(t => t.stop());
+    mediaRecorderRef.current = null;
   };
 
-  const transcribeAudio = async (blob) => {
+  const transcribeAudio = async (blob, ext = 'webm') => {
     try {
       const formData = new FormData();
-      formData.append('audio', blob, 'recording.webm');
-      
+      formData.append('audio', blob, `recording.${ext}`);
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const response = await axios.post(`${API}/voice/transcribe`, formData, {
-        headers: { ...headers, 'Content-Type': 'multipart/form-data' },
-        timeout: 30000
+        headers: { ...headers },
+        timeout: 30000,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
-      
-      if (response.data.text) {
+      if (response.data?.text) {
         setInput(response.data.text);
         addLog(`Transcribed: "${response.data.text}"`, 'success', 'voice');
+      } else {
+        addLog('No text in response. Try speaking clearly.', 'error', 'voice');
       }
     } catch (err) {
-      addLog('Failed to transcribe audio', 'error', 'voice');
+      const msg = err.response?.data?.detail || err.message || 'Transcription failed.';
+      addLog(msg, 'error', 'voice');
+      setLastError(msg);
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
@@ -373,94 +529,194 @@ const Workspace = () => {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleBuild = async (promptOverride = null) => {
-    const prompt = promptOverride || input;
-    if (!prompt.trim() || isBuilding) return;
+  const handleBuild = async (promptOverride = null, filesOverride = null) => {
+    const prompt = (promptOverride ?? input).trim();
+    const filesToUse = filesOverride && filesOverride.length > 0 ? filesOverride : attachedFiles;
+    const hasImageOnly = filesToUse.length >= 1 && filesToUse.every(f => f.type?.startsWith?.('image/'));
+    const useImageToCode = hasImageOnly && (!prompt || /screenshot|image|convert|turn into code|build from/i.test(prompt));
+
+    if ((!prompt && !useImageToCode) || isBuilding) return;
 
     setInput('');
     setIsBuilding(true);
     setBuildProgress(0);
-    
-    const userMessage = { 
-      role: 'user', 
-      content: prompt,
-      attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined
-    };
-    setMessages(prev => [...prev, userMessage]);
-    setAttachedFiles([]);
-    
-    setMessages(prev => [...prev, { role: 'assistant', content: 'Building...', isBuilding: true }]);
+    setLastError(null);
+    setQualityGateResult(null);
+    setTokensPerStep({ plan: 0, generate: 0 });
+    if (!filesOverride?.length) setAttachedFiles([]);
 
-    addLog('Starting build process...', 'info', 'planner');
-    
-    const agents = [
-      { name: 'Planner', delay: 300 },
-      { name: 'Frontend', delay: 500 },
-      { name: 'Styling', delay: 400 },
-      { name: 'Testing', delay: 300 },
-      { name: 'Finalizing', delay: 200 }
-    ];
+    const userMessage = { role: 'user', content: useImageToCode ? 'Convert image to code' : prompt, attachments: filesToUse.length ? [...filesToUse] : undefined };
+    setMessages(prev => [...prev, userMessage]);
+    const imagesToSend = [...filesToUse];
+
+    const promptIsBig = /build\s+(me\s+)?(a\s+)?(bank|software|app|platform|dashboard|application|system|tool|website)/i.test(prompt);
+    const isBigBuild = !useImageToCode && buildMode !== 'quick' && (buildMode === 'plan' || buildMode === 'agent' || buildMode === 'thinking' || buildMode === 'swarm') && (promptIsBig || prompt.length > 80);
+    const initialAssistantContent = useImageToCode ? 'Converting image to code...' : (isBigBuild ? 'Planning...' : 'Building...');
+    setMessages(prev => [...prev, { role: 'assistant', content: initialAssistantContent, isBuilding: true }]);
+
+    addLog(useImageToCode ? 'Screenshot to code...' : isBigBuild ? 'Creating plan...' : 'Starting build process...', 'info', 'planner');
 
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      
+
+      let planSuggestions = [];
+      if (isBigBuild) {
+        try {
+          const useSwarm = buildMode === 'swarm' && !!token;
+const planRes = await axios.post(`${API}/build/plan`, { prompt, swarm: useSwarm }, { headers, timeout: 45000 });
+          const planText = (planRes.data.plan_text || '').trim();
+          planSuggestions = planRes.data.suggestions || [];
+          const planTokens = planRes.data.plan_tokens ?? planRes.data.tokens_estimate ?? 0;
+          setTokensPerStep(prev => ({ ...prev, plan: planTokens }));
+          setMessages(prev => {
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            if (lastIdx >= 0 && next[lastIdx].role === 'assistant' && next[lastIdx].isBuilding) {
+              next[lastIdx] = { role: 'assistant', content: planText || 'Plan ready.', planSuggestions };
+            }
+            return next;
+          });
+          addLog('Plan ready. Starting build...', 'info', 'planner');
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Building...', isBuilding: true }]);
+        } catch (planErr) {
+          addLog(`Plan failed: ${planErr.message}, building directly`, 'info', 'planner');
+          setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { ...msg, content: 'Building...' } : msg));
+        }
+      }
+
+      if (useImageToCode && imagesToSend[0]) {
+        const img = imagesToSend[0];
+        const blob = await (await fetch(img.data)).blob();
+        const formData = new FormData();
+        formData.append('file', blob, img.name || 'screenshot.png');
+        if (prompt) formData.append('prompt', prompt);
+        const res = await axios.post(`${API}/ai/image-to-code`, formData, { headers, timeout: 60000 });
+        let code = (res.data.code || '').trim();
+        code = code.replace(/```jsx?/g, '').replace(/```/g, '').trim();
+        setBuildProgress(100);
+        addLog('Image-to-code completed', 'success', 'deploy');
+        const newFiles = { ...files, '/App.js': { code } };
+        setFiles(newFiles);
+        setVersions(prev => [{ id: `v_${Date.now()}`, prompt: 'Image to code', files: newFiles, time: new Date().toLocaleTimeString() }, ...prev]);
+        setCurrentVersion(`v_${Date.now()}`);
+        setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { role: 'assistant', content: 'Done! Your app is ready.', hasCode: true } : msg));
+        setIsBuilding(false);
+        setTimeout(() => fetchSuggestNext(), 400);
+        return;
+      }
+
+      const phaseLabels = buildPhases.length ? buildPhases : [
+        { id: 'planning', name: 'Planning' },
+        { id: 'generating', name: 'Generating' },
+        { id: 'validating', name: 'Validating' },
+        { id: 'deployment', name: 'Deployment' }
+      ];
+      const agents = [
+        { name: 'Planner', delay: 300, phase: phaseLabels[0]?.name || 'Planning' },
+        { name: 'Frontend', delay: 500, phase: phaseLabels[1]?.name || 'Generating' },
+        { name: 'Styling', delay: 400, phase: phaseLabels[1]?.name || 'Generating' },
+        { name: 'Testing', delay: 300, phase: phaseLabels[2]?.name || 'Validating' },
+        { name: 'Finalizing', delay: 200, phase: phaseLabels[3]?.name || 'Deployment' }
+      ];
       let progress = 0;
       for (const agent of agents) {
+        setCurrentPhase(agent.phase);
         addLog(`${agent.name} agent processing...`, 'info', agent.name.toLowerCase());
         await new Promise(r => setTimeout(r, agent.delay));
         progress += 20;
         setBuildProgress(Math.min(progress, 90));
       }
+      setCurrentPhase('');
 
       let messageContent = `Create a complete, production-ready React application for: "${prompt}". 
 Use React hooks and Tailwind CSS. Make it modern, responsive, and functional.
 Include all necessary components and styling.
 Respond with ONLY the complete App.js code, nothing else.`;
-
-      if (attachedFiles.length > 0) {
-        const imageFiles = attachedFiles.filter(f => f.type.startsWith('image/'));
-        if (imageFiles.length > 0) {
-          messageContent += `\n\nThe user has attached ${imageFiles.length} image(s) as reference. Try to match the design style.`;
-        }
+      if (imagesToSend.length > 0) {
+        messageContent += `\n\nThe user has attached ${imagesToSend.length} image(s) as reference. Try to match the design style.`;
+      }
+      const wantsPayments = /payment|stripe|subscription|checkout|pay|billing/i.test(prompt);
+      if (wantsPayments) {
+        messageContent += `\n\nIMPORTANT: Include Stripe Checkout integration. Use @stripe/react-stripe-js or Stripe.js. Add a checkout/pay button and handle payment success. Include placeholder for STRIPE_PUBLISHABLE_KEY.`;
       }
 
-      const response = await axios.post(`${API}/ai/chat`, {
-        message: messageContent,
-        session_id: sessionId,
-        model: selectedModel
-      }, { headers, timeout: 90000 });
-
-      setBuildProgress(100);
-      addLog('Build completed successfully!', 'success', 'deploy');
-
-      let code = response.data.response;
-      code = code.replace(/```jsx?/g, '').replace(/```/g, '').trim();
-
-      const newFiles = { ...files, '/App.js': { code } };
-      setFiles(newFiles);
-
-      const newVersion = {
-        id: `v_${Date.now()}`,
-        prompt,
-        files: newFiles,
-        time: new Date().toLocaleTimeString()
-      };
-      setVersions(prev => [newVersion, ...prev]);
-      setCurrentVersion(newVersion.id);
-
-      setMessages(prev => prev.map((msg, i) => 
-        i === prev.length - 1 
-          ? { role: 'assistant', content: `Done! Your app is ready. What would you like to change?`, hasCode: true }
-          : msg
-      ));
-
+      if (useStreaming) {
+        const res = await fetch(`${API}/ai/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ message: messageContent, session_id: sessionId, model: selectedModel, mode: buildMode === 'thinking' ? 'thinking' : undefined }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+        let streamDone = false;
+        while (!streamDone) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n').filter(Boolean);
+          for (const line of lines) {
+            try {
+              const obj = JSON.parse(line);
+              if (obj.error) throw new Error(obj.error);
+              if (obj.chunk) {
+                accumulated += obj.chunk;
+                setFiles(prev => ({ ...prev, '/App.js': { code: accumulated } }));
+              }
+              if (obj.done) {
+                streamDone = true;
+                setBuildProgress(100);
+                if (obj.tokens_used != null) { setLastTokensUsed(obj.tokens_used); setTokensPerStep(prev => ({ ...prev, generate: obj.tokens_used })); }
+                addLog('Build completed successfully!', 'success', 'deploy');
+                const code = accumulated.replace(/```jsx?/g, '').replace(/```/g, '').trim();
+                setFiles(prev => {
+                  const next = { ...prev, '/App.js': { code } };
+                  setVersions(v => [{ id: `v_${Date.now()}`, prompt, files: next, time: new Date().toLocaleTimeString() }, ...v]);
+                  setCurrentVersion(`v_${Date.now()}`);
+                  setMessages(m => m.map((msg, i) => i === m.length - 1 ? { role: 'assistant', content: 'Done! Your app is ready.', hasCode: true, planSuggestions: planSuggestions } : msg));
+                  setTimeout(() => fetchSuggestNext(), 400);
+                  axios.post(`${API}/ai/quality-gate`, { code }).then(r => setQualityGateResult(r.data)).catch(() => setQualityGateResult(null));
+                  return next;
+                });
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+      } else {
+        const response = await axios.post(`${API}/ai/chat`, {
+          message: messageContent,
+          session_id: sessionId,
+          model: selectedModel
+        }, { headers, timeout: 90000 });
+        setBuildProgress(100);
+        if (response.data.tokens_used != null) { setLastTokensUsed(response.data.tokens_used); setTokensPerStep(prev => ({ ...prev, generate: response.data.tokens_used })); }
+        addLog('Build completed successfully!', 'success', 'deploy');
+        let code = response.data.response;
+        code = code.replace(/```jsx?/g, '').replace(/```/g, '').trim();
+        const newFiles = { ...files, '/App.js': { code } };
+        setFiles(newFiles);
+        setVersions(prev => [{ id: `v_${Date.now()}`, prompt, files: newFiles, time: new Date().toLocaleTimeString() }, ...prev]);
+        setCurrentVersion(`v_${Date.now()}`);
+        setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { role: 'assistant', content: 'Done! Your app is ready.', hasCode: true, planSuggestions } : msg));
+        setTimeout(() => fetchSuggestNext(), 400);
+        axios.post(`${API}/ai/quality-gate`, { code }).then(r => setQualityGateResult(r.data)).catch(() => setQualityGateResult(null));
+      }
     } catch (error) {
       addLog(`Build failed: ${error.message}`, 'error', 'system');
-      setMessages(prev => prev.map((msg, i) => 
-        i === prev.length - 1 
-          ? { role: 'assistant', content: 'Something went wrong. Please try again.', error: true }
-          : msg
-      ));
+      setLastError(error.message);
+      const detail = String(error.response?.data?.detail || '');
+      const is402 = error.response?.status === 402;
+      const isKeyError = error.response?.status === 401 || detail.toLowerCase().includes('api key') || detail.toLowerCase().includes('no api key') || error.message?.toLowerCase().includes('key');
+      const friendlyMessage = is402
+        ? (detail || 'Insufficient tokens. Buy more in Token Center to keep building.')
+        : error.code === 'ERR_NETWORK' || error.message?.includes('Network')
+          ? "We couldn't connect to the AI. Check your internet connection and that your API keys in Settings are valid."
+          : isKeyError
+            ? "AI couldn't run. Check Settings → API & Environment: add and save your OpenAI or Anthropic key, then try again."
+            : "The build didn't complete. Try again or check Settings if you use your own API keys.";
+      setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { role: 'assistant', content: friendlyMessage, error: true } : msg));
     } finally {
       setIsBuilding(false);
     }
@@ -484,9 +740,11 @@ Respond with ONLY the complete App.js code, nothing else.`;
       const response = await axios.post(`${API}/ai/chat`, {
         message: `Current code:\n\n${files['/App.js'].code}\n\nModify it to: "${request}"\n\nRespond with ONLY the complete updated App.js code, nothing else.`,
         session_id: sessionId,
-        model: selectedModel
+        model: selectedModel,
+        mode: buildMode === 'thinking' ? 'thinking' : undefined
       }, { headers, timeout: 90000 });
 
+      if (response.data.tokens_used != null) setLastTokensUsed(response.data.tokens_used);
       let newCode = response.data.response;
       newCode = newCode.replace(/```jsx?/g, '').replace(/```/g, '').trim();
 
@@ -504,7 +762,7 @@ Respond with ONLY the complete App.js code, nothing else.`;
         setCurrentVersion(newVersion.id);
         
         addLog('Modification applied successfully!', 'success', 'frontend');
-        
+        setTimeout(() => fetchSuggestNext(), 400);
         setMessages(prev => prev.map((msg, i) => 
           i === prev.length - 1 ? { role: 'assistant', content: 'Updated! What else would you like to change?', hasCode: true } : msg
         ));
@@ -540,6 +798,92 @@ Respond with ONLY the complete App.js code, nothing else.`;
     addLog(`Restored to version from ${version.time}`, 'info', 'history');
   };
 
+  const addNewFileToProject = () => {
+    const base = '/NewFile';
+    const ext = '.jsx';
+    let path = base + ext;
+    let n = 0;
+    while (files[path]) {
+      n += 1;
+      path = base + n + ext;
+    }
+    const code = `// ${path}\nimport React from 'react';\n\nexport default function Component() {\n  return <div>New component</div>;\n}\n`;
+    setFiles(prev => ({ ...prev, [path]: { code } }));
+    setActiveFile(path);
+    addLog(`Added file ${path}`, 'info', 'files');
+  };
+
+  const runValidate = async () => {
+    const code = files[activeFile]?.code ?? '';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const lang = activeFile.endsWith('.css') ? 'css' : 'javascript';
+      const res = await axios.post(`${API}/ai/validate-and-fix`, { code, language: lang }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'validate', data: res.data });
+      addLog(res.data.valid ? 'Validation: no issues' : 'Validation: issues found, fix available', res.data.valid ? 'success' : 'warning', 'system');
+    } catch (e) {
+      addLog(`Validate failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'validate', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runSecurityScan = async () => {
+    const payload = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v?.code ?? '']));
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const res = await axios.post(`${API}/ai/security-scan`, { files: payload }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'security', data: res.data });
+      addLog('Security scan completed', 'info', 'system');
+    } catch (e) {
+      addLog(`Security scan failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'security', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runA11yCheck = async () => {
+    const code = files[activeFile]?.code ?? '';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const res = await axios.post(`${API}/ai/accessibility-check`, { code }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'a11y', data: res.data });
+      addLog('Accessibility check completed', 'info', 'system');
+    } catch (e) {
+      addLog(`A11y check failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'a11y', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const fetchSuggestNext = async (filesOverride = null, lastPromptOverride = null) => {
+    const f = filesOverride || files;
+    const payload = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (v && typeof v === 'object' && v.code !== undefined) ? v.code : (v || '')]));
+    const lastPrompt = lastPromptOverride ?? (messages.length > 0 ? (messages[messages.length - 1].content || '').slice(0, 200) : '');
+    try {
+      const res = await axios.post(`${API}/ai/suggest-next`, { files: payload, last_prompt: lastPrompt }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setNextSuggestions(Array.isArray(res.data?.suggestions) ? res.data.suggestions : []);
+    } catch {
+      setNextSuggestions([]);
+    }
+  };
+
+  const applyValidateFix = () => {
+    if (toolsReport?.type === 'validate' && toolsReport.data?.fixed_code) {
+      setFiles(prev => ({ ...prev, [activeFile]: { code: toolsReport.data.fixed_code } }));
+      addLog('Applied validation fix', 'success', 'system');
+      setToolsReport(null);
+    }
+  };
+
   const downloadCode = () => {
     Object.entries(files).forEach(([name, { code }]) => {
       const blob = new Blob([code], { type: 'text/plain' });
@@ -550,6 +894,180 @@ Respond with ONLY the complete App.js code, nothing else.`;
       a.click();
     });
     addLog('Files downloaded', 'success', 'export');
+  };
+
+  const exportFilesPayload = () => {
+    const out = {};
+    Object.entries(files).forEach(([name, { code }]) => { out[name] = code || ''; });
+    return out;
+  };
+
+  const handleExportGitHub = async () => {
+    try {
+      const res = await axios.post(`${API}/export/github`, { files: exportFilesPayload() }, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'crucibai-github.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('GitHub ZIP downloaded. Create a repo and upload contents.', 'success', 'export');
+    } catch (e) {
+      addLog(`Export failed: ${e.message}`, 'error', 'export');
+    }
+  };
+
+  const handleExportDeploy = async () => {
+    try {
+      const res = await axios.post(`${API}/export/deploy`, { files: exportFilesPayload() }, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'crucibai-deploy.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Deploy ZIP downloaded. Use Vercel or Netlify to deploy.', 'success', 'export');
+    } catch (e) {
+      addLog(`Export failed: ${e.message}`, 'error', 'export');
+    }
+  };
+
+  const handleExportZip = async () => {
+    try {
+      const res = await axios.post(`${API}/export/zip`, { files: exportFilesPayload() }, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'crucibai-project.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Project ZIP downloaded. For live URL: upload to Vercel (vercel.com/new) or Netlify.', 'success', 'export');
+    } catch (e) {
+      addLog(`Export ZIP failed: ${e.message}`, 'error', 'export');
+    }
+  };
+
+  const runOptimize = async () => {
+    const code = files[activeFile]?.code ?? '';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const lang = activeFile.endsWith('.css') ? 'css' : 'javascript';
+      const res = await axios.post(`${API}/ai/optimize`, { code, language: lang }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'optimize', data: res.data });
+      addLog('Optimize completed', 'info', 'system');
+    } catch (e) {
+      addLog(`Optimize failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'optimize', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runExplainError = async () => {
+    const code = files[activeFile]?.code ?? '';
+    const err = lastError || 'Syntax or runtime error';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const res = await axios.post(`${API}/ai/explain-error`, { error: err, code }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'explain', data: res.data });
+      addLog('Explain error completed', 'info', 'system');
+    } catch (e) {
+      addLog(`Explain error failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'explain', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runAnalyze = async () => {
+    const code = files[activeFile]?.code ?? '';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const res = await axios.post(`${API}/ai/analyze`, { content: code, task: 'analyze' }, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setToolsReport({ type: 'analyze', data: res.data });
+      addLog('Analyze completed', 'info', 'system');
+    } catch (e) {
+      addLog(`Analyze failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'analyze', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runFilesAnalyze = async () => {
+    const code = files[activeFile]?.code ?? '';
+    if (!code.trim()) { addLog('No file selected or empty file', 'warning', 'system'); return; }
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', new Blob([code], { type: 'text/plain' }), (activeFile || 'file.txt').replace('/', ''));
+      formData.append('analysis_type', 'code');
+      const res = await axios.post(`${API}/files/analyze`, formData, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'multipart/form-data' } });
+      setToolsReport({ type: 'files', data: res.data });
+      addLog('Files analyze completed', 'info', 'system');
+    } catch (e) {
+      addLog(`Files analyze failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'files', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const runDesignFromUrl = async () => {
+    const url = window.prompt('Enter image URL to design from (must be an image):', 'https://example.com/image.png');
+    if (!url?.trim()) return;
+    setToolsLoading(true);
+    setToolsReport(null);
+    try {
+      const formData = new FormData();
+      formData.append('url', url.trim());
+      const res = await axios.post(`${API}/ai/design-from-url`, formData, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }, timeout: 60000 });
+      setToolsReport({ type: 'design', data: res.data });
+      if (res.data?.code) {
+        setFiles(prev => ({ ...prev, '/App.js': { code: res.data.code } }));
+        setActiveFile('/App.js');
+        addLog('Design from URL applied to App.js', 'success', 'system');
+      } else {
+        addLog('Design from URL completed', 'info', 'system');
+      }
+    } catch (e) {
+      addLog(`Design from URL failed: ${e.response?.data?.detail || e.message}`, 'error', 'system');
+      setToolsReport({ type: 'design', data: { error: e.response?.data?.detail || e.message } });
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const handleAutoFix = async () => {
+    if (!files['/App.js']?.code || isBuilding) return;
+    setIsBuilding(true);
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Auto-fixing errors...', isBuilding: true }]);
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(`${API}/ai/chat`, {
+        message: `Fix any syntax or runtime errors in this React code. Return ONLY the complete fixed App.js code, nothing else.\n\n${files['/App.js'].code}`,
+        session_id: sessionId,
+        model: selectedModel
+      }, { headers, timeout: 60000 });
+      let code = (res.data.response || '').replace(/```jsx?/g, '').replace(/```/g, '').trim();
+      if (code.includes('import') || code.includes('function') || code.includes('const')) {
+        setFiles(prev => ({ ...prev, '/App.js': { code } }));
+        setLastError(null);
+        addLog('Auto-fix applied', 'success', 'system');
+      }
+      setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { role: 'assistant', content: 'Done. Check the preview.', hasCode: true } : msg));
+    } catch (e) {
+      setMessages(prev => prev.map((msg, i) => i === prev.length - 1 ? { role: 'assistant', content: `Fix failed: ${e.message}`, error: true } : msg));
+    } finally {
+      setIsBuilding(false);
+    }
   };
 
   const copyCode = () => {
@@ -565,80 +1083,261 @@ Respond with ONLY the complete App.js code, nothing else.`;
     }));
   };
 
+  const runCommand = (cmd) => {
+    setCommandPaletteOpen(false);
+    if (cmd === 'deploy') { handleExportDeploy(); setShowDeployModal(true); }
+    else if (cmd === 'export') downloadCode();
+    else if (cmd === 'zip') handleExportZip();
+    else if (cmd === 'github') handleExportGitHub();
+    else if (cmd === 'autofix' && lastError) handleAutoFix();
+    else if (cmd === 'tokens') navigate('/app/tokens');
+    else if (cmd === 'settings') navigate('/app/settings');
+    else if (cmd === 'newAgent') { setSessionId(`session_${Date.now()}`); setMessages([]); }
+    else if (cmd === 'terminal') { setActivePanel('console'); setRightSidebarOpen(true); }
+    else if (cmd === 'maximizeChat') setChatMaximized(prev => !prev);
+    else if (cmd === 'searchFiles') setFileSearchOpen(prev => !prev);
+    else if (cmd === 'openBrowser') window.open('/workspace', '_blank');
+    else if (cmd === 'shortcuts') navigate('/app/shortcuts');
+    else if (cmd === 'templates') navigate('/app/templates');
+    else if (cmd === 'prompts') navigate('/app/prompts');
+    else if (cmd === 'payments') navigate('/app/payments-wizard');
+  };
+
   return (
-    <div className="h-screen bg-[#0A0A0B] text-white flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-14 border-b border-zinc-800 flex items-center justify-between px-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/')}
-            data-testid="back-button"
-            className="flex items-center gap-2 text-zinc-400 hover:text-white transition"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-lg font-semibold">CrucibAI</span>
-          </button>
-          
-          <div className="h-4 w-px bg-zinc-800" />
-          
-          <div className="text-sm text-zinc-500">
-            {versions.length > 0 ? `v${versions.length}` : 'New Project'}
+    <div className="h-screen bg-[#FAF9F7] text-gray-900 flex flex-col overflow-hidden font-sans text-[13px] antialiased">
+      {/* Command palette (Ctrl+K / Cmd+K) */}
+      {commandPaletteOpen && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm" onClick={() => setCommandPaletteOpen(false)}>
+          <div className="w-full max-w-lg bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-2 border-b border-gray-200 text-xs text-gray-500">Command palette</div>
+            <div className="max-h-80 overflow-y-auto">
+              {[
+                { id: 'newAgent', label: 'New Agent / New chat (Ctrl+Shift+L)', icon: Plus },
+                { id: 'searchFiles', label: 'Search / Open file (Ctrl+P)', icon: Search },
+                { id: 'terminal', label: 'Show Terminal (Ctrl+J)', icon: Terminal },
+                { id: 'maximizeChat', label: 'Maximize Chat (Ctrl+Alt+E)', icon: Maximize2 },
+                { id: 'openBrowser', label: 'Open preview in browser (Ctrl+Shift+B)', icon: Globe },
+                { id: 'deploy', label: 'Deploy (download ZIP for Vercel/Netlify)', icon: ExternalLink },
+                { id: 'export', label: 'Export / Download code', icon: Download },
+                { id: 'github', label: 'Push to GitHub (download ZIP)', icon: Github },
+                ...(lastError ? [{ id: 'autofix', label: 'Auto-fix errors', icon: RefreshCw }] : []),
+                { id: 'templates', label: 'Templates gallery', icon: FileCode },
+                { id: 'prompts', label: 'Prompt Library', icon: FileText },
+                { id: 'shortcuts', label: 'Shortcut cheat sheet (?)', icon: HelpCircle },
+                { id: 'payments', label: 'Add payments (Stripe) wizard', icon: CreditCard },
+                { id: 'tokens', label: 'Token Center', icon: Zap },
+                { id: 'settings', label: 'Settings', icon: Settings },
+              ].map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => runCommand(id)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-800 hover:bg-gray-100 transition">
+                  <Icon className="w-4 h-4 text-gray-500" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="flex items-center gap-3">
-          <ModelSelector selectedModel={selectedModel} onSelectModel={setSelectedModel} />
-          
+      {/* File search (Ctrl+P) */}
+      {fileSearchOpen && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[20vh] bg-black/40 backdrop-blur-sm" onClick={() => setFileSearchOpen(false)}>
+          <div className="w-full max-w-md bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-2 border-b border-gray-200 text-xs text-gray-500">Open file (Ctrl+P)</div>
+            <div className="max-h-60 overflow-y-auto">
+              {Object.keys(files).sort().map((filename) => (
+                <button key={filename} onClick={() => { setActiveFile(filename); setFileSearchOpen(false); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-gray-100 text-sm text-gray-800">
+                  <FileCode className="w-4 h-4 text-gray-500" />
+                  {filename.replace('/', '')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Paywall banner when low/zero tokens */}
+      {user && (user.token_balance === 0 || (user.token_balance < 10000 && user.token_balance > 0)) && (
+        <div className="flex-shrink-0 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+          <span className="text-sm text-amber-400">
+            {user.token_balance === 0 ? 'Out of tokens.' : 'Running low on tokens.'} Get more to keep building.
+          </span>
+          <button onClick={() => navigate('/app/tokens')} className="text-sm font-medium text-amber-400 hover:text-amber-300">
+            Buy tokens
+          </button>
+        </div>
+      )}
+
+      {/* Click outside to close menu */}
+      {menuAnchor && <div className="fixed inset-0 z-40" onClick={() => setMenuAnchor(null)} aria-hidden />}
+      {/* Menu bar – File, Edit, Selection, View, Go, Run, Terminal, Help */}
+      <div className="h-9 border-b border-stone-200 flex items-center px-2 gap-0 flex-shrink-0 text-[13px] relative z-50 bg-[#FAF9F7]">
+        {['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help'].map((name) => (
+          <div key={name} className="relative">
+            <button
+              onClick={() => setMenuAnchor(menuAnchor === name.toLowerCase() ? null : name.toLowerCase())}
+              className="px-3 py-1.5 rounded text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+            >
+              {name}
+            </button>
+            {menuAnchor === name.toLowerCase() && (
+              <div className="absolute left-0 top-full mt-0.5 w-48 py-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
+                {name === 'File' && (
+                  <>
+                    <button onClick={() => setFileSearchOpen(true)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Open File... (Ctrl+P)</button>
+                    <button onClick={() => { setSessionId(`session_${Date.now()}`); setMessages([]); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">New Agent (Ctrl+Shift+L)</button>
+                    <div className="h-px bg-gray-200 my-1" />
+                    <button onClick={downloadCode} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Export</button>
+                    <button onClick={() => { handleExportZip(); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Download ZIP</button>
+                    <button onClick={() => { handleExportGitHub(); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Push to GitHub</button>
+                    <button onClick={() => setMenuAnchor(null)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Close</button>
+                  </>
+                )}
+                {name === 'Edit' && (
+                  <>
+                    <button onClick={copyCode} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Copy</button>
+                    <button onClick={() => { versions.length > 1 && restoreVersion(versions[1]); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Undo</button>
+                    <button onClick={() => { runCommand('autofix'); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Auto-fix</button>
+                  </>
+                )}
+                {name === 'View' && (
+                  <>
+                    <button onClick={() => { setActivePanel('preview'); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Preview</button>
+                    <button onClick={() => { setActivePanel('console'); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Terminal (Ctrl+J)</button>
+                    <button onClick={() => setChatMaximized(prev => !prev)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Maximize Chat (Ctrl+Alt+E)</button>
+                    <button onClick={() => setAgentsPanelOpen(prev => !prev)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Agents Panel</button>
+                    <div className="h-px bg-gray-200 my-1" />
+                    <div className="px-3 py-1.5 text-xs text-gray-500">Build level</div>
+                    {['quick', 'balanced', 'deep'].map((level) => (
+                      <button key={level} onClick={() => { setAutoLevel(level); setMenuAnchor(null); }} className={`w-full px-3 py-2 text-left text-xs capitalize ${autoLevel === level ? 'text-gray-900 bg-gray-200' : 'text-gray-700 hover:bg-gray-100'}`}>{level}</button>
+                    ))}
+                    <div className="h-px bg-gray-200 my-1" />
+                    <button onClick={() => setLeftSidebarOpen(prev => !prev)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Show code / files</button>
+                    <button onClick={() => setRightSidebarOpen(prev => !prev)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Toggle Right Sidebar</button>
+                  </>
+                )}
+                {name === 'Go' && (
+                  <>
+                    <button onClick={() => versions.length > 1 && restoreVersion(versions[1])} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Back (previous version)</button>
+                    <button onClick={() => setFileSearchOpen(true)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Go to File... (Ctrl+P)</button>
+                  </>
+                )}
+                {name === 'Run' && (
+                  <>
+                    <button onClick={() => { setActivePanel('preview'); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Run Preview</button>
+                    <button onClick={() => { handleExportDeploy(); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Deploy</button>
+                  </>
+                )}
+                {name === 'Terminal' && (
+                  <>
+                    <button onClick={() => { setActivePanel('console'); setRightSidebarOpen(true); setMenuAnchor(null); }} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Show Terminal (Ctrl+J)</button>
+                  </>
+                )}
+                {name === 'Help' && (
+                  <>
+                    <button onClick={() => navigate('/app/shortcuts')} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Shortcuts (?)</button>
+                    <button onClick={() => navigate('/app/learn')} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Learn</button>
+                    <button onClick={() => setCommandPaletteOpen(true)} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Command Palette (Ctrl+K)</button>
+                  </>
+                )}
+                {(name === 'Selection' && (
+                  <>
+                    <button onClick={copyCode} className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-100 text-xs">Copy</button>
+                  </>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Header – branding + Settings */}
+      <header className="h-11 border-b border-stone-200 flex items-center justify-between px-3 flex-shrink-0 bg-[#FAF9F7]">
+        <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={downloadCode}
-            data-testid="export-button"
-            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+            onClick={() => navigate('/')}
+            data-testid="back-button"
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition shrink-0"
           >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export</span>
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span className="text-sm font-medium text-gray-800 truncate">CrucibAI</span>
           </button>
-          
-          <button 
-            data-testid="github-button"
-            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition"
+          <div className="h-4 w-px bg-gray-200 shrink-0" />
+          <span className="text-xs text-gray-500 truncate">
+            {versions.length > 0 ? `v${versions.length}` : 'New Project'}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => navigate('/app/settings')}
+            data-testid="settings-button"
+            className="p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition"
+            title="Settings – add API keys to build with AI"
           >
-            <Github className="w-4 h-4" />
-            <span className="hidden sm:inline">Push</span>
-          </button>
-          
-          <button 
-            data-testid="deploy-button"
-            className="flex items-center gap-2 px-4 py-1.5 bg-white text-black rounded-lg text-sm font-medium hover:bg-zinc-200 transition"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>Deploy</span>
+            <Settings className="w-4 h-4" />
           </button>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - File Explorer */}
-        <div className="w-56 border-r border-zinc-800 flex-shrink-0 overflow-y-auto">
-          <FileTree 
-            files={files} 
-            activeFile={activeFile} 
-            onSelectFile={setActiveFile}
-          />
-        </div>
+        {/* Left: Agents panel (optional) */}
+        {agentsPanelOpen && (
+          <div className="w-64 border-r border-stone-200 flex-shrink-0 overflow-y-auto bg-[#FAF9F7]">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">Agents</span>
+              <button onClick={() => setAgentsPanelOpen(false)} className="text-gray-500 hover:text-gray-900">×</button>
+            </div>
+            <div className="p-2 space-y-2">
+              {agentsActivity.length === 0 ? (
+                <p className="text-xs text-gray-500 p-2">When you build, activity will appear here.</p>
+              ) : (
+                agentsActivity.slice(0, 10).map((a, i) => (
+                  <div key={i} className="p-2 rounded-lg bg-white border border-gray-200 text-xs">
+                    <p className="text-gray-800 line-clamp-2">{a.message}</p>
+                    <div className="flex justify-between mt-1 text-gray-500">
+                      <span>{a.model || 'auto'}</span>
+                      <span>{a.tokens_used ? `~${a.tokens_used}` : ''}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        {/* Left Sidebar – Code / Files (View → Show code) */}
+        {leftSidebarOpen && (
+          <div className="w-56 border-r border-stone-200 flex-shrink-0 overflow-y-auto flex flex-col bg-[#FAF9F7]">
+            <div className="flex items-center justify-between px-2 py-1 border-b border-gray-200">
+              <span className="text-xs text-gray-500">Files</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => fileInputRef.current?.click()} className="p-1 text-gray-500 hover:text-gray-900" title="Attach file to chat"><Paperclip className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setLeftSidebarOpen(false)} className="p-1 text-gray-500 hover:text-gray-900" title="Hide code"><PanelLeftClose className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            <FileTree 
+              files={files} 
+              activeFile={activeFile} 
+              onSelectFile={setActiveFile}
+              onAddFile={addNewFileToProject}
+            />
+          </div>
+        )}
+        {!leftSidebarOpen && (
+          <button onClick={() => setLeftSidebarOpen(true)} className="w-8 border-r border-gray-200 flex-shrink-0 flex items-center justify-center text-gray-500 hover:text-gray-900 bg-gray-50" title="Show code / files"><PanelRightOpen className="w-4 h-4" /></button>
+        )}
 
         {/* Code Editor */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
           {/* Editor Tabs */}
-          <div className="h-10 border-b border-zinc-800 flex items-center px-2 gap-1 flex-shrink-0">
+          <div className="h-10 border-b border-stone-200 flex items-center px-2 gap-1 flex-shrink-0 bg-[#FAF9F7]">
             {Object.keys(files).map(filename => (
               <button
                 key={filename}
                 onClick={() => setActiveFile(filename)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
                   activeFile === filename 
-                    ? 'bg-zinc-800 text-white' 
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-white text-gray-900 border border-gray-200 border-b-white -mb-px' 
+                    : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
                 <FileCode className="w-3.5 h-3.5" />
@@ -649,10 +1348,10 @@ Respond with ONLY the complete App.js code, nothing else.`;
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={copyCode}
-                className="p-1.5 text-zinc-500 hover:text-white transition"
+                className="p-1.5 text-gray-500 hover:text-gray-900 transition"
                 title="Copy code"
               >
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
           </div>
@@ -664,7 +1363,7 @@ Respond with ONLY the complete App.js code, nothing else.`;
               language={activeFile.endsWith('.css') ? 'css' : 'javascript'}
               value={files[activeFile]?.code || ''}
               onChange={handleCodeChange}
-              theme="vs-dark"
+              theme="light"
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,
@@ -678,15 +1377,15 @@ Respond with ONLY the complete App.js code, nothing else.`;
           </div>
         </div>
 
-        {/* Right Panel - Preview / Console / History */}
-        <div className="w-[45%] border-l border-zinc-800 flex flex-col flex-shrink-0">
+        {/* Right Panel - Preview / Terminal / History / Review / Tools */}
+        <div className="w-[45%] border-l border-stone-200 flex flex-col flex-shrink-0 bg-white">
           {/* Panel Tabs */}
-          <div className="h-10 border-b border-zinc-800 flex items-center px-2 gap-1 flex-shrink-0">
+          <div className="h-10 border-b border-stone-200 flex items-center px-2 gap-1 flex-shrink-0 bg-[#FAF9F7]">
             <button
               onClick={() => setActivePanel('preview')}
               data-testid="preview-tab"
               className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
-                activePanel === 'preview' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                activePanel === 'preview' ? 'bg-white text-gray-900 border border-stone-200 border-b-white -mb-px shadow-sm' : 'text-stone-600 hover:text-gray-900'
               }`}
             >
               <Eye className="w-3.5 h-3.5" />
@@ -696,27 +1395,47 @@ Respond with ONLY the complete App.js code, nothing else.`;
               onClick={() => setActivePanel('console')}
               data-testid="console-tab"
               className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
-                activePanel === 'console' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                activePanel === 'console' ? 'bg-white text-gray-900 border border-stone-200 border-b-white -mb-px shadow-sm' : 'text-stone-600 hover:text-gray-900'
               }`}
             >
               <Terminal className="w-3.5 h-3.5" />
-              Console
+              Terminal
             </button>
             <button
               onClick={() => setActivePanel('history')}
               data-testid="history-tab"
               className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
-                activePanel === 'history' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                activePanel === 'history' ? 'bg-white text-gray-900 border border-stone-200 border-b-white -mb-px shadow-sm' : 'text-stone-600 hover:text-gray-900'
               }`}
             >
               <History className="w-3.5 h-3.5" />
               History
             </button>
+            <button
+              onClick={() => setActivePanel('review')}
+              data-testid="review-tab"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                activePanel === 'review' ? 'bg-white text-gray-900 border border-stone-200 border-b-white -mb-px shadow-sm' : 'text-stone-600 hover:text-gray-900'
+              }`}
+            >
+              <FileCode className="w-3.5 h-3.5" />
+              Review {versions.length > 0 ? `(${Object.keys(files).length} files)` : ''}
+            </button>
+            <button
+              onClick={() => setActivePanel('tools')}
+              data-testid="tools-tab"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                activePanel === 'tools' ? 'bg-white text-gray-900 border border-stone-200 border-b-white -mb-px shadow-sm' : 'text-stone-600 hover:text-gray-900'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              Tools
+            </button>
             
             <div className="ml-auto">
               <button
                 onClick={() => setIsFullscreen(!isFullscreen)}
-                className="p-1.5 text-zinc-500 hover:text-white transition"
+                className="p-1.5 text-stone-500 hover:text-gray-900 transition"
               >
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
@@ -729,7 +1448,7 @@ Respond with ONLY the complete App.js code, nothing else.`;
               <SandpackProvider
                 template="react"
                 files={files}
-                theme="dark"
+                theme="light"
                 options={{
                   externalResources: ['https://cdn.tailwindcss.com'],
                 }}
@@ -743,7 +1462,7 @@ Respond with ONLY the complete App.js code, nothing else.`;
             )}
             
             {activePanel === 'console' && (
-              <ConsolePanel logs={logs} />
+              <ConsolePanel logs={logs} placeholder="Build and agent output appears here. Use View → Terminal or Ctrl+J to focus." />
             )}
             
             {activePanel === 'history' && (
@@ -753,20 +1472,166 @@ Respond with ONLY the complete App.js code, nothing else.`;
                 currentVersion={currentVersion}
               />
             )}
+            {activePanel === 'review' && (
+              <div className="p-4 h-full overflow-auto">
+                <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Review changes</div>
+                <p className="text-sm text-gray-600 mb-4">{Object.keys(files).length} file(s) in current version.</p>
+                <div className="flex flex-col gap-2">
+                  {Object.keys(files).sort().map((filename) => (
+                    <div key={filename} className="flex items-center gap-2 py-2 border-b border-gray-200 text-sm">
+                      <FileCode className="w-4 h-4 text-gray-500" />
+                      <span className="text-gray-800">{filename.replace('/', '')}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-6">
+                  <button onClick={() => versions.length > 1 && restoreVersion(versions[1])} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 text-sm">Undo All</button>
+                  <button onClick={() => setActivePanel('preview')} className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 text-sm">Keep All</button>
+                </div>
+              </div>
+            )}
+            {activePanel === 'tools' && (
+              <div className="p-4 h-full overflow-auto">
+                <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Quality & checks</div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={runValidate} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <Check className="w-4 h-4" /> Validate current file
+                  </button>
+                  <button onClick={runSecurityScan} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <ShieldCheck className="w-4 h-4" /> Security scan
+                  </button>
+                  <button onClick={runA11yCheck} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <Eye className="w-4 h-4" /> Accessibility check
+                  </button>
+                  <button onClick={runOptimize} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <Zap className="w-4 h-4" /> Optimize
+                  </button>
+                  <button onClick={runExplainError} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <HelpCircle className="w-4 h-4" /> Explain error
+                  </button>
+                  <button onClick={runAnalyze} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <FileCode className="w-4 h-4" /> Analyze code
+                  </button>
+                  <button onClick={runFilesAnalyze} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <FileText className="w-4 h-4" /> Analyze files
+                  </button>
+                  <button onClick={runDesignFromUrl} disabled={toolsLoading} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm disabled:opacity-50">
+                    <Globe className="w-4 h-4" /> Design from URL
+                  </button>
+                </div>
+                {toolsLoading && <p className="text-sm text-gray-500 mb-2">Running…</p>}
+                {toolsReport && (
+                  <div className="mt-3 p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm">
+                    {toolsReport.type === 'validate' && (
+                      <>
+                        {toolsReport.data.error ? (
+                          <p className="text-red-600">{toolsReport.data.error}</p>
+                        ) : (
+                          <>
+                            <p className={toolsReport.data.valid ? 'text-green-700' : 'text-amber-700'}>
+                              {toolsReport.data.valid ? 'No issues found.' : 'Issues found. Fix available below.'}
+                            </p>
+                            {!toolsReport.data.valid && toolsReport.data.fixed_code && (
+                              <button onClick={applyValidateFix} className="mt-2 px-3 py-1.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs">Apply fix</button>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                    {toolsReport.type === 'security' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.report || (toolsReport.data.checklist || []).join('\n')}</pre>
+                    )}
+                    {toolsReport.type === 'a11y' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.report}</pre>
+                    )}
+                    {toolsReport.type === 'optimize' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.optimized_code || toolsReport.data.report || JSON.stringify(toolsReport.data)}</pre>
+                    )}
+                    {toolsReport.type === 'explain' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.explanation || toolsReport.data.report}</pre>
+                    )}
+                    {toolsReport.type === 'analyze' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.result || toolsReport.data.report}</pre>
+                    )}
+                    {toolsReport.type === 'files' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || toolsReport.data.report || JSON.stringify(toolsReport.data)}</pre>
+                    )}
+                    {toolsReport.type === 'design' && (
+                      <pre className="whitespace-pre-wrap text-gray-700 font-mono text-xs">{toolsReport.data.error || (toolsReport.data.files ? 'Design applied to editor.' : toolsReport.data.report) || JSON.stringify(toolsReport.data)}</pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Bottom Chat Panel */}
-      <div className="border-t border-zinc-800 p-4 flex-shrink-0 relative z-50">
+      {/* Status bar */}
+      <div className="h-6 border-t border-stone-200 flex items-center justify-between px-3 text-xs text-stone-600 flex-shrink-0 bg-[#FAF9F7]">
+        <div className="flex items-center gap-4">
+          <span>{versions.length > 0 ? `Project · v${versions.length}` : 'New Project'}</span>
+          <span>{currentVersion ? 'main' : '—'}</span>
+          {lastError && <span className="text-red-600">1 error</span>}
+          {!lastError && <span className="text-stone-500">0 errors</span>}
+          <span className="text-stone-500">0 warnings</span>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {(tokensPerStep.plan > 0 || tokensPerStep.generate > 0) && (
+            <span className="text-stone-500" title="Per-step token usage">
+              {tokensPerStep.plan > 0 && <>Plan: ~{(tokensPerStep.plan / 1000).toFixed(1)}k</>}
+              {tokensPerStep.plan > 0 && tokensPerStep.generate > 0 && ' · '}
+              {tokensPerStep.generate > 0 && <>Generate: ~{(tokensPerStep.generate / 1000).toFixed(1)}k</>}
+            </span>
+          )}
+          {qualityGateResult != null && (
+            <span className={qualityGateResult.passed ? 'text-green-600' : 'text-amber-600'} title="Quality gate">
+              Quality: {qualityGateResult.score}% {qualityGateResult.passed ? '✓' : '(review)'}
+            </span>
+          )}
+          <button onClick={() => setFileSearchOpen(true)} className="hover:text-gray-800">Ctrl+P</button>
+          <button onClick={() => setCommandPaletteOpen(true)} className="hover:text-gray-800">Ctrl+K</button>
+          {user && <span>Tokens: {user.token_balance?.toLocaleString() ?? 0}</span>}
+        </div>
+      </div>
+
+      {/* Bottom Chat Panel – Agent dropdown + input + Send */}
+      <div className="border-t border-stone-200 bg-[#FAF9F7] p-3 flex-shrink-0 relative z-[100] isolate">
         {isBuilding && (
           <div className="mb-3">
-            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+            {currentPhase && (
+              <div className="text-xs text-gray-600 mb-1 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                {currentPhase}
+              </div>
+            )}
+            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
                 initial={{ width: 0 }}
                 animate={{ width: `${buildProgress}%` }}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Add API key banner when last message is key/network error */}
+        {messages.some(m => m.error && (m.content || '').toLowerCase().includes('api key')) && (
+          <div className="mb-3 flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <span>Check Settings → API & Environment: your saved keys are used for builds. If you see errors, re-save your OpenAI or Anthropic key and try again.</span>
+            <button type="button" onClick={() => navigate('/app/settings')} className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 font-medium">Open Settings</button>
+          </div>
+        )}
+
+        {/* Try these prompts when no messages yet */}
+        {messages.length === 0 && (
+          <div className="mb-3">
+            <p className="text-xs text-gray-500 mb-2">First time? Add your API keys in <button type="button" onClick={() => navigate('/app/settings')} className="underline hover:text-gray-700">Settings</button> to build with AI.</p>
+            <span className="text-xs text-gray-500">Try these:</span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {['Build a todo app', 'Create a landing page', 'Add a contact form', 'Make a counter component'].map((prompt) => (
+                <button key={prompt} type="button" onClick={() => setInput(prompt)} className="px-3 py-1.5 rounded-lg bg-white text-gray-700 hover:bg-gray-100 text-sm border border-gray-200">{prompt}</button>
+              ))}
             </div>
           </div>
         )}
@@ -777,18 +1642,30 @@ Respond with ONLY the complete App.js code, nothing else.`;
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
                   msg.role === 'user' 
-                    ? 'bg-zinc-700 text-white' 
+                    ? 'bg-blue-600 text-white' 
                     : msg.error 
-                      ? 'bg-red-500/10 text-red-400'
-                      : 'bg-zinc-800 text-zinc-300'
+                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      : 'bg-white border border-gray-200 text-gray-800'
                 }`}>
                   {msg.isBuilding ? (
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
+                      <div className="w-3 h-3 border-2 border-gray-400 border-t-blue-500 rounded-full animate-spin" />
                       <span>{msg.content}</span>
                     </div>
                   ) : (
-                    <span>{msg.content}</span>
+                    <>
+                      <span className={msg.content && msg.content.includes('\n') ? 'whitespace-pre-wrap block text-left max-h-48 overflow-y-auto' : ''}>{msg.content}</span>
+                      {msg.planSuggestions?.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <p className="text-xs text-gray-500 mb-1">Suggestions</p>
+                          <div className="flex flex-wrap gap-1">
+                            {msg.planSuggestions.map((s, j) => (
+                              <button key={j} type="button" onClick={() => setInput(String(s))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs text-gray-700">{String(s)}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -800,14 +1677,14 @@ Respond with ONLY the complete App.js code, nothing else.`;
         {attachedFiles.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap">
             {attachedFiles.map((file, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 rounded-lg text-sm">
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm">
                 {file.type.startsWith('image/') ? (
-                  <Image className="w-4 h-4 text-blue-400" />
+                  <Image className="w-4 h-4 text-blue-600" />
                 ) : (
-                  <FileText className="w-4 h-4 text-green-400" />
+                  <FileText className="w-4 h-4 text-green-600" />
                 )}
-                <span className="text-zinc-300 max-w-[150px] truncate">{file.name}</span>
-                <button onClick={() => removeFile(i)} className="text-zinc-500 hover:text-white">
+                <span className="text-gray-700 max-w-[150px] truncate">{file.name}</span>
+                <button onClick={() => removeFile(i)} className="text-gray-500 hover:text-gray-900">
                   <X className="w-3 h-3" />
                 </button>
               </div>
@@ -815,26 +1692,67 @@ Respond with ONLY the complete App.js code, nothing else.`;
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex gap-3">
-          <div className="flex-1 flex items-center gap-2 px-4 py-3 bg-zinc-800/50 rounded-xl">
+        {nextSuggestions.length > 0 && (
+          <div className="mb-3">
+            <span className="text-xs text-gray-500 mr-2">What next?</span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {nextSuggestions.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => { setInput(String(s)); setNextSuggestions([]); }}
+                  className="px-3 py-1.5 rounded-lg bg-white text-gray-700 hover:bg-gray-100 text-sm border border-gray-200"
+                >
+                  {String(s)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="text-xs text-gray-500 mb-1.5 flex items-center justify-between flex-wrap gap-2">
+          {files['/App.js']?.code && (
+            <button type="button" onClick={() => { handleExportDeploy(); setShowDeployModal(true); }} className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700">
+              One-click deploy
+            </button>
+          )}
+          <span className="flex items-center gap-2 flex-wrap">
+            <span>Mode:</span>
+            {[
+              { id: 'quick', label: 'Quick', title: 'Fast single-shot generation, no plan step' },
+              { id: 'plan', label: 'Plan', title: 'Structured plan first, then build' },
+              { id: 'agent', label: 'Agent', title: 'Full orchestration (plan → build)' },
+              { id: 'thinking', label: 'Thinking', title: 'Step-by-step reasoning, then code' },
+              { id: 'swarm', label: 'Swarm (Beta)', title: 'Parallel agents: plan + suggestions at once (faster, uses more tokens)' }
+            ].map(({ id, label, title }) => (
+              <button key={id} type="button" onClick={() => setBuildMode(id)} title={title} className={`px-2 py-0.5 rounded text-xs font-medium ${buildMode === id ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>{label}</button>
+            ))}
+          </span>
+          <span><kbd className="px-1 py-0.5 rounded bg-gray-200 text-gray-600">Ctrl+K</kbd></span>
+        </div>
+        <form onSubmit={handleSubmit} className="flex gap-2 items-stretch">
+          <div className="flex shrink-0">
+            <ModelSelector selectedModel={selectedModel} onSelectModel={setSelectedModel} variant="chat" />
+          </div>
+          <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-white rounded-lg border border-gray-300 min-w-0 shadow-sm">
             <button
               type="button"
-              onClick={isRecording ? stopRecording : startRecording}
+              onClick={isTranscribing ? undefined : (isRecording ? stopRecording : startRecording)}
+              disabled={isTranscribing}
               data-testid="voice-input-button"
-              className={`p-1.5 rounded-lg transition ${
-                isRecording ? 'bg-red-500/20 text-red-400' : 'text-zinc-500 hover:text-white hover:bg-zinc-700'
+              className={`p-2 rounded-md transition ${
+                isTranscribing ? 'text-gray-400 cursor-wait' : isRecording ? 'bg-red-100 text-red-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200'
               }`}
-              title={isRecording ? 'Stop recording' : 'Voice input'}
+              title={isTranscribing ? 'Transcribing...' : isRecording ? 'Stop recording' : 'Voice input'}
             >
-              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isTranscribing ? <Loader2 className="w-4 h-4 animate-spin" /> : isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
-            
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               data-testid="file-attach-button"
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-700 transition"
-              title="Attach file"
+              className="p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-200 transition"
+              title="Add file (image, PDF, text)"
             >
               <Paperclip className="w-4 h-4" />
             </button>
@@ -847,15 +1765,15 @@ Respond with ONLY the complete App.js code, nothing else.`;
               className="hidden"
             />
             
-            <div className="h-4 w-px bg-zinc-700" />
+            <div className="h-4 w-px bg-gray-300" />
             
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               data-testid="chat-input"
-              placeholder={versions.length > 0 ? "Describe changes..." : "Describe what you want to build..."}
-              className="flex-1 bg-transparent text-white placeholder-zinc-500 outline-none text-sm"
+              placeholder={versions.length > 0 ? "Describe changes... (@ file, / fix)" : "Describe what you want to build..."}
+              className="flex-1 bg-transparent text-gray-900 placeholder-gray-400 outline-none text-sm min-w-0"
               disabled={isBuilding}
             />
           </div>
@@ -864,19 +1782,39 @@ Respond with ONLY the complete App.js code, nothing else.`;
             type="submit"
             disabled={!input.trim() || isBuilding}
             data-testid="submit-button"
-            className="px-5 py-3 bg-white text-black rounded-xl text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 transition flex items-center gap-2"
+            className="relative z-10 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-700 transition flex items-center gap-2 shrink-0"
+            title={versions.length > 0 ? 'Send update' : 'Send & build'}
           >
             {isBuilding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
+                <Send className="w-4 h-4" />
                 <span>{versions.length > 0 ? 'Update' : 'Build'}</span>
               </>
             )}
           </button>
         </form>
       </div>
+
+      {/* One-click deploy modal */}
+      {showDeployModal && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeployModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Deploy your app</h3>
+            <p className="text-sm text-gray-600 mb-4">Your deploy ZIP has been downloaded (or use the download again from Ctrl+K → Deploy). Upload it to one of these platforms:</p>
+            <div className="flex flex-col gap-2">
+              <a href="https://vercel.com/new" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-black text-white text-sm font-medium hover:bg-gray-800">
+                Deploy with Vercel
+              </a>
+              <a href="https://app.netlify.com/drop" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
+                Deploy with Netlify
+              </a>
+            </div>
+            <button type="button" onClick={() => setShowDeployModal(false)} className="mt-4 w-full py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

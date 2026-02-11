@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth, API } from '../App';
+import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, LayoutDashboard, FolderPlus, Coins, FileOutput, 
   Library, Settings, LogOut, Menu, X, ChevronRight,
-  Zap, Bell, MessageSquare
+  Zap, Bell, MessageSquare, LayoutGrid, BookOpen, Key, Keyboard, CreditCard, FileText
 } from 'lucide-react';
-import { useAuth } from '../App';
 
 const Layout = () => {
   const location = useLocation();
@@ -14,13 +15,32 @@ const Layout = () => {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [backendOk, setBackendOk] = useState(null);
+
+  const checkBackend = () => {
+    setBackendOk(null);
+    axios.get(`${API}/health`, { timeout: 5000 })
+      .then(() => setBackendOk(true))
+      .catch(() => setBackendOk(false));
+  };
+
+  useEffect(() => {
+    checkBackend();
+  }, []);
 
   const navigation = [
     { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
     { name: 'New Project', href: '/app/projects/new', icon: FolderPlus },
     { name: 'Token Center', href: '/app/tokens', icon: Coins },
     { name: 'Exports', href: '/app/exports', icon: FileOutput },
+    { name: 'Docs / Slides / Sheets', href: '/app/generate', icon: FileText },
     { name: 'Patterns', href: '/app/patterns', icon: Library },
+    { name: 'Templates', href: '/app/templates', icon: LayoutGrid },
+    { name: 'Prompt Library', href: '/app/prompts', icon: BookOpen },
+    { name: 'Learn', href: '/app/learn', icon: BookOpen },
+    { name: 'Env', href: '/app/env', icon: Key },
+    { name: 'Shortcuts', href: '/app/shortcuts', icon: Keyboard },
+    { name: 'Add payments', href: '/app/payments-wizard', icon: CreditCard },
     { name: 'Settings', href: '/app/settings', icon: Settings }
   ];
 
@@ -111,22 +131,30 @@ const Layout = () => {
           {navigation.map(item => <NavItem key={item.name} item={item} />)}
         </nav>
 
-        {/* Token Balance */}
+        {/* Credits & plan (Base44-style) */}
         <div className={`p-4 border-t border-white/10 ${!sidebarOpen ? 'hidden' : ''}`}>
           <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-400">Token Balance</span>
+              <span className="text-sm text-gray-400">Token balance</span>
               <Zap className="w-4 h-4 text-blue-400" />
             </div>
             <p className="text-2xl font-bold text-blue-400" data-testid="sidebar-token-balance">
-              {user?.token_balance?.toLocaleString() || 0}
+              {(user?.token_balance ?? 0).toLocaleString()}
             </p>
-            <Link 
-              to="/app/tokens" 
-              className="text-xs text-blue-400 hover:text-blue-300 mt-2 inline-block"
-            >
-              Buy more tokens →
-            </Link>
+            <div className="mt-2 space-y-1">
+              <Link to="/app/tokens" className="text-xs text-blue-400 hover:text-blue-300 block">
+                Buy more tokens →
+              </Link>
+              <Link to="/pricing" className="text-xs text-blue-400 hover:text-blue-300 block">
+                Pricing plans
+              </Link>
+              <Link to="/app/learn" className="text-xs text-gray-400 hover:text-white block">
+                Documentation
+              </Link>
+              <a href="mailto:support@crucibai.com" className="text-xs text-gray-400 hover:text-white block">
+                Get help
+              </a>
+            </div>
           </div>
         </div>
 
@@ -155,12 +183,29 @@ const Layout = () => {
       </aside>
 
       {/* Main Content */}
-      <main className={`min-h-screen pt-16 lg:pt-0 transition-all duration-300 ${
+      <main className={`min-h-screen pt-16 lg:pt-0 transition-all duration-300 bg-[#FAF9F7] ${
         sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'
       }`}>
         <div className="p-6">
           <Outlet />
         </div>
+        {/* Footer: backend status + Privacy | Terms */}
+        <footer className="px-6 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+          <span className="flex items-center gap-2">
+            {backendOk === true && <span className="text-green-600">Backend connected</span>}
+            {backendOk === false && (
+              <>
+                <span className="text-amber-600">Backend unavailable</span>
+                <button type="button" onClick={checkBackend} className="text-blue-600 hover:text-blue-800 font-medium">Retry</button>
+              </>
+            )}
+            {backendOk === null && <span>Checking…</span>}
+          </span>
+          <span className="flex gap-4">
+            <Link to="/privacy" className="hover:text-gray-800">Privacy</Link>
+            <Link to="/terms" className="hover:text-gray-800">Terms</Link>
+          </span>
+        </footer>
       </main>
     </div>
   );

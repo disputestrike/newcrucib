@@ -248,25 +248,16 @@ root.render(
       setBuildPhase('deploying');
       setCurrentAgent('deploy');
       setAgentProgress(prev => [...prev, { id: 'deploy', status: 'running' }]);
-      addLog('🚀 Deploy Agent preparing preview...', 'agent');
-      
-      await new Promise(r => setTimeout(r, 1000));
-      
-      // Create preview URL (simulated)
-      const previewId = Math.random().toString(36).substring(7);
-      setPreviewUrl(`https://${plan.appName.toLowerCase().replace(/\s+/g, '-')}-${previewId}.crucibai.app`);
-      
+      addLog('🚀 Deploy: use Workspace Export or Deploy when ready.', 'agent');
       setAgentProgress(prev => prev.map(a => a.id === 'deploy' ? { ...a, status: 'complete' } : a));
-      addLog('✅ Preview ready!', 'success');
+      setPreviewUrl('');
 
-      // Complete
       setBuildPhase('complete');
       setCurrentAgent(null);
       addLog('🎉 Build complete! Your app is ready.', 'success');
-      
-      setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `✅ **Build Complete!**\n\nYour app is ready. You can:\n• Edit the code on the left\n• See live preview on the right\n• Download or deploy your app\n\nNeed changes? Just tell me what to modify!`
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `✅ **Build Complete!**\n\nYour app is ready. Edit the code, use live preview, or go to Workspace to export or deploy. Need changes? Just describe what to modify.`
       }]);
 
     } catch (error) {

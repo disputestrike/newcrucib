@@ -1,6 +1,26 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, Component } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+
+// Error boundary so blank screen shows a message
+class AppErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: "100vh", background: "#050505", color: "#fff", padding: 24, fontFamily: "sans-serif" }}>
+          <h1 style={{ fontSize: 18 }}>Something went wrong</h1>
+          <p style={{ color: "#888" }}>{this.state.error?.message || "Unknown error"}</p>
+          <button onClick={() => window.location.reload()} style={{ marginTop: 16, padding: "8px 16px", cursor: "pointer" }}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -15,8 +35,27 @@ import Settings from "./pages/Settings";
 import Builder from "./pages/Builder";
 import Workspace from "./pages/Workspace";
 import Layout from "./components/Layout";
+import ShareView from "./pages/ShareView";
+import ExamplesGallery from "./pages/ExamplesGallery";
+import TemplatesGallery from "./pages/TemplatesGallery";
+import PromptLibrary from "./pages/PromptLibrary";
+import LearnPanel from "./pages/LearnPanel";
+import EnvPanel from "./pages/EnvPanel";
+import ShortcutCheatsheet from "./pages/ShortcutCheatsheet";
+import PaymentsWizard from "./pages/PaymentsWizard";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Pricing from "./pages/Pricing";
+import Features from "./pages/Features";
+import TemplatesPublic from "./pages/TemplatesPublic";
+import PatternsPublic from "./pages/PatternsPublic";
+import LearnPublic from "./pages/LearnPublic";
+import ShortcutsPublic from "./pages/ShortcutsPublic";
+import PromptsPublic from "./pages/PromptsPublic";
+import Benchmarks from "./pages/Benchmarks";
+import GenerateContent from "./pages/GenerateContent";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 export const API = `${BACKEND_URL}/api`;
 
 // Auth Context
@@ -69,6 +108,18 @@ const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const loginWithToken = async (t) => {
+    localStorage.setItem("token", t);
+    setToken(t);
+    try {
+      const res = await axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${t}` } });
+      setUser(res.data);
+    } catch (e) {
+      localStorage.removeItem("token");
+      setToken(null);
+    }
+  };
+
   const refreshUser = async () => {
     if (token) {
       const res = await axios.get(`${API}/auth/me`, {
@@ -79,7 +130,7 @@ const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading, refreshUser, loginWithToken }}>
       {children}
     </AuthContext.Provider>
   );
@@ -110,13 +161,25 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/builder" element={<Builder />} />
           <Route path="/workspace" element={<Workspace />} />
+          <Route path="/share/:token" element={<ShareView />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/features" element={<Features />} />
+          <Route path="/templates" element={<TemplatesPublic />} />
+          <Route path="/patterns" element={<PatternsPublic />} />
+          <Route path="/learn" element={<LearnPublic />} />
+          <Route path="/shortcuts" element={<ShortcutsPublic />} />
+          <Route path="/prompts" element={<PromptsPublic />} />
+          <Route path="/benchmarks" element={<Benchmarks />} />
           <Route path="/app" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="builder" element={<Builder />} />
@@ -126,11 +189,20 @@ function App() {
             <Route path="tokens" element={<TokenCenter />} />
             <Route path="exports" element={<ExportCenter />} />
             <Route path="patterns" element={<PatternLibrary />} />
+            <Route path="templates" element={<TemplatesGallery />} />
+            <Route path="prompts" element={<PromptLibrary />} />
+            <Route path="learn" element={<LearnPanel />} />
+            <Route path="env" element={<EnvPanel />} />
+            <Route path="shortcuts" element={<ShortcutCheatsheet />} />
+            <Route path="payments-wizard" element={<PaymentsWizard />} />
+            <Route path="examples" element={<ExamplesGallery />} />
+            <Route path="generate" element={<GenerateContent />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
 

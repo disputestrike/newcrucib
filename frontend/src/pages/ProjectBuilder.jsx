@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Globe, Server, Database, Layers, Zap, ArrowRight, 
-  ArrowLeft, Check, AlertCircle, Bot, Sparkles
+  ArrowLeft, Check, AlertCircle, Bot, Sparkles, Smartphone, Gamepad2, Cpu, TrendingUp
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
@@ -31,8 +31,15 @@ const ProjectBuilder = () => {
   });
 
   const projectTypes = [
+    { id: 'fullstack', name: 'Full-Stack App', icon: Layers, desc: 'Web apps, dashboards, tools', tokens: 675000 },
     { id: 'website', name: 'Website', icon: Globe, desc: 'Landing pages, portfolios, blogs', tokens: 400000 },
-    { id: 'fullstack', name: 'Full-Stack App', icon: Layers, desc: 'Complete web applications', tokens: 675000 },
+    { id: 'mobile', name: 'Mobile App', icon: Smartphone, desc: 'React Native, Flutter, PWA', tokens: 600000 },
+    { id: 'saas', name: 'SaaS', icon: Layers, desc: 'Subscriptions, billing, multi-tenant', tokens: 700000 },
+    { id: 'bot', name: 'Bot', icon: Bot, desc: 'Slack, Discord, Telegram, webhooks', tokens: 350000 },
+    { id: 'ai_agent', name: 'AI Agent', icon: Cpu, desc: 'Agents with tools, prompts, API', tokens: 500000 },
+    { id: 'game', name: 'Game', icon: Gamepad2, desc: 'Browser, mobile, 2D/3D, scores', tokens: 600000 },
+    { id: 'trading', name: 'Trading / Fintech', icon: TrendingUp, desc: 'Stocks, crypto, forex, orders, P&L, charts', tokens: 650000 },
+    { id: 'any', name: 'Anything', icon: Sparkles, desc: 'No limit—we build whatever you describe', tokens: 675000 },
     { id: 'api', name: 'API Backend', icon: Server, desc: 'REST/GraphQL APIs', tokens: 350000 },
     { id: 'automation', name: 'Automation', icon: Bot, desc: 'Scripts, scrapers, workflows', tokens: 250000 }
   ];
@@ -44,10 +51,18 @@ const ProjectBuilder = () => {
     setLoading(true);
     
     try {
-      const res = await axios.post(`${API}/projects`, {
+      const payload = {
         ...formData,
-        estimated_tokens: selectedType?.tokens
-      }, {
+        estimated_tokens: selectedType?.tokens,
+        requirements: {
+          ...formData.requirements,
+          prompt: formData.description,
+          build_kind: ['mobile', 'saas', 'bot', 'ai_agent', 'game', 'trading', 'any'].includes(formData.project_type)
+            ? formData.project_type
+            : formData.project_type === 'fullstack' ? 'fullstack' : 'fullstack'
+        }
+      };
+      const res = await axios.post(`${API}/projects`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

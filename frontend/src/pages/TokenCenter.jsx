@@ -55,6 +55,22 @@ const TokenCenter = () => {
     }
   };
 
+  const handleStripeCheckout = async (bundleKey) => {
+    setPurchasing(`stripe-${bundleKey}`);
+    try {
+      const { data } = await axios.post(
+        `${API}/stripe/create-checkout-session`,
+        { bundle: bundleKey },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (data?.url) window.location.href = data.url;
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPurchasing(null);
+    }
+  };
+
   const bundleOrder = ['starter', 'pro', 'professional', 'enterprise', 'unlimited'];
   const sortedBundles = bundleOrder.filter(k => bundles[k]).map(k => ({ key: k, ...bundles[k] }));
 
@@ -111,6 +127,12 @@ const TokenCenter = () => {
         </div>
       </motion.div>
 
+      {/* Pricing section heading */}
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold text-gray-200">Pricing & usage</h2>
+        <p className="text-sm text-gray-500">Token bundles do not expire. Usage this period: {usage?.total_used?.toLocaleString() ?? 0} tokens</p>
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-4 border-b border-white/10">
         {[
@@ -163,17 +185,29 @@ const TokenCenter = () => {
               <button
                 onClick={() => handlePurchase(bundle.key)}
                 disabled={purchasing === bundle.key}
-                className={`w-full py-3 rounded-lg font-medium transition ${
+                className={`w-full py-2.5 rounded-lg font-medium transition ${
                   bundle.key === 'pro'
                     ? 'bg-blue-500 hover:bg-blue-600'
                     : 'bg-white/10 hover:bg-white/20'
                 } disabled:opacity-50`}
                 data-testid={`buy-${bundle.key}-btn`}
               >
-                {purchasing === bundle.key ? (
+                {purchasing === bundle.key && !purchasing.startsWith('stripe') ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
                 ) : (
-                  'Buy Now'
+                  'Add tokens'
+                )}
+              </button>
+              <button
+                onClick={() => handleStripeCheckout(bundle.key)}
+                disabled={purchasing === `stripe-${bundle.key}`}
+                className="w-full mt-2 py-2 rounded-lg font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50"
+                data-testid={`stripe-${bundle.key}-btn`}
+              >
+                {purchasing === `stripe-${bundle.key}` ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                ) : (
+                  'Pay with Stripe'
                 )}
               </button>
             </motion.div>
