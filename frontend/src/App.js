@@ -168,7 +168,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/builder" element={<Builder />} />
-          <Route path="/workspace" element={<Workspace />} />
+          <Route path="/workspace" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
           <Route path="/share/:token" element={<ShareView />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
