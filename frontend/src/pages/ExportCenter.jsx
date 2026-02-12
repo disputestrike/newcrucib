@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  FileText, Table, FileCode, Image, Download, 
-  Calendar, Filter, Plus, ExternalLink
+  FileText, Table, FileCode, Download, 
+  Calendar, Plus, Rocket
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
+import DeployButton from '../components/DeployButton';
 
 const ExportCenter = () => {
   const { token } = useAuth();
@@ -15,6 +16,7 @@ const ExportCenter = () => {
   const [creating, setCreating] = useState(false);
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('pdf');
+  const [deployProjectId, setDeployProjectId] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -87,6 +89,34 @@ const ExportCenter = () => {
         <h1 className="text-3xl font-bold mb-2">Export Center</h1>
         <p className="text-gray-400">Generate and download your project documentation in multiple formats.</p>
       </div>
+
+      {/* Deploy: one-click deploy ZIP, Vercel, Netlify */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10"
+      >
+        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          <Rocket className="w-5 h-5 text-emerald-500" />
+          Deploy to production
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">Download a deploy-ready ZIP or open Vercel / Netlify to upload it.</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <select
+            value={deployProjectId}
+            onChange={(e) => setDeployProjectId(e.target.value)}
+            className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 focus:border-emerald-500 outline-none min-w-[200px]"
+          >
+            <option value="">Select a completed project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {deployProjectId && (
+            <DeployButton projectId={deployProjectId} variant="buttons" />
+          )}
+        </div>
+      </motion.div>
 
       {/* Create Export */}
       <motion.div

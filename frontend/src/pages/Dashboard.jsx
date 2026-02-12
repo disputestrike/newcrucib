@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
+import DeployButton from '../components/DeployButton';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const Dashboard = () => {
@@ -270,6 +271,9 @@ const Dashboard = () => {
                   </div>
                 </Link>
                 <div className="flex items-center gap-1 shrink-0" onClick={e => e.preventDefault()}>
+                  {project.status === 'completed' && (
+                    <DeployButton projectId={project.id} variant="icon" onFeedback={(fb) => { setActionFeedback(fb); setTimeout(() => setActionFeedback(null), fb.type === 'error' ? 4000 : 3000); }} />
+                  )}
                   <button type="button" onClick={(e) => handleShare(e, project.id)} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-500/10 rounded-lg" title="Share"> <Share2 className="w-4 h-4" /> </button>
                   <button type="button" onClick={(e) => handleDuplicate(e, project.id)} className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-500/10 rounded-lg" title="Duplicate"> <Copy className="w-4 h-4" /> </button>
                   <button type="button" onClick={(e) => handleSaveAsTemplate(e, project.id)} className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-500/10 rounded-lg" title="Save as template"> <Bookmark className="w-4 h-4" /> </button>

@@ -34,12 +34,22 @@ cd frontend && npm run lint && npm run test -- --watchAll=false --coverage
 # 2. Backend unit + integration + API contract
 cd backend && pip install -r requirements.txt && pytest tests/ -v
 
+# 2b. Production validation (5-layer) – endpoint mapping, webhooks, data integrity, user journeys, security
+cd backend && python -m pytest tests/test_endpoint_mapping.py tests/test_webhook_flows.py tests/test_data_integrity.py tests/test_user_journeys.py tests/test_security.py -v --tb=short
+
+# 2c. Backend coverage (target >80% on server)
+cd backend && pytest tests/ --cov=server --cov-report=html --cov-report=term
+
 # 3. Security audit (frontend)
 cd frontend && npm audit
 
 # 4. E2E (requires frontend + backend running)
 cd frontend && npx playwright test
 ```
+
+**Deploy & Enterprise endpoints (optional):**
+- `GET /api/projects/{id}/deploy/zip` and `GET /api/projects/{id}/export/deploy` — deploy-ready ZIP (auth required).
+- `POST /api/enterprise/contact` — enterprise lead capture (body: company, email, team_size, use_case, budget, message).
 
 ---
 

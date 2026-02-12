@@ -52,6 +52,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     name: str
+    ref: Optional[str] = None  # referral code at sign-up
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -76,6 +77,14 @@ class BuildPlanRequest(BaseModel):
     prompt: str
     swarm: Optional[bool] = False  # run plan + suggestions in parallel; token multiplier applied
     build_kind: Optional[str] = None  # fullstack | mobile | saas | bot | ai_agent | game | trading | any
+
+class EnterpriseContact(BaseModel):
+    company: str
+    email: EmailStr
+    team_size: Optional[str] = None  # e.g. "1-10", "11-50", "51+"
+    use_case: Optional[str] = None  # e.g. "agency", "startup", "enterprise"
+    budget: Optional[str] = None  # e.g. "10K", "50K", "100K+", "custom"
+    message: Optional[str] = None
 
 class ProjectCreate(BaseModel):
     name: str
@@ -199,15 +208,44 @@ class AgentAutomationBody(BaseModel):
     prompt: str
     run_at: Optional[str] = None  # ISO datetime for scheduled
 
-# ==================== TOKEN PRICING ====================
+# ==================== CREDITS & PRICING (1 credit = 1000 tokens) ====================
 
-TOKEN_BUNDLES = {
-    "starter": {"tokens": 100000, "price": 9.99},
-    "pro": {"tokens": 500000, "price": 49.99},
-    "professional": {"tokens": 1200000, "price": 99.99},
-    "enterprise": {"tokens": 5000000, "price": 299.99},
-    "unlimited": {"tokens": 25000000, "price": 999.99}
+CREDITS_PER_TOKEN = 1000
+MIN_CREDITS_FOR_LLM = 5
+FREE_TIER_CREDITS = 50  # Generous free tier (~1 landing page); ~91% margin on paid
+
+# New pricing tiers (Final Model): Starter, Builder, Pro, Agency + add-ons. Single source of truth.
+CREDIT_PLANS = {
+    "free": {"credits": 50, "price": 0, "name": "Free", "speed": "Standard speed", "landing_only": True},
+    "starter": {"credits": 100, "price": 12.99, "name": "Starter", "speed": "Fast builds"},
+    "builder": {"credits": 500, "price": 29.99, "name": "Builder", "speed": "Fast builds"},
+    "pro": {"credits": 2000, "price": 79.99, "name": "Pro", "speed": "Priority speed"},
+    "agency": {"credits": 10000, "price": 199.99, "name": "Agency", "speed": "Priority speed"},
 }
+ADDONS = {"light": {"credits": 50, "price": 7, "name": "Light"}, "dev": {"credits": 250, "price": 30, "name": "Dev"}}
+# Annual pricing: 17% off (2 months free). Matches Manus positioning; no margin loss; better retention.
+ANNUAL_PRICES = {"starter": 129, "builder": 299, "pro": 799, "agency": 1999}
+
+# Purchasable bundles for Stripe & /tokens/bundles: tiers (excl. free) + add-ons. tokens = credits * CREDITS_PER_TOKEN for legacy.
+TOKEN_BUNDLES = {}
+for k, v in CREDIT_PLANS.items():
+    if k == "free":
+        continue
+    TOKEN_BUNDLES[k] = {
+        "tokens": v["credits"] * CREDITS_PER_TOKEN,
+        "credits": v["credits"],
+        "price": v["price"],
+        "name": v["name"],
+        "speed": v.get("speed", ""),
+    }
+for k, v in ADDONS.items():
+    TOKEN_BUNDLES[k] = {
+        "tokens": v["credits"] * CREDITS_PER_TOKEN,
+        "credits": v["credits"],
+        "price": v["price"],
+        "name": v.get("name", k),
+        "speed": "",
+    }
 
 AGENT_DEFINITIONS = [
     {"name": "Planner", "layer": "planning", "description": "Decomposes user requests into executable tasks", "avg_tokens": 50000},
@@ -257,6 +295,94 @@ MODEL_CHAINS = {
 
 # ==================== HELPERS ====================
 
+def _user_credits(user: Optional[dict]) -> int:
+    """Credits available: credit_balance if set, else token_balance // 1000 for legacy."""
+    if not user:
+        return 0
+    if user.get("credit_balance") is not None:
+        return int(user["credit_balance"])
+    return int((user.get("token_balance") or 0) // CREDITS_PER_TOKEN)
+
+
+def _tokens_to_credits(tokens: int) -> int:
+    return max(1, (tokens + CREDITS_PER_TOKEN - 1) // CREDITS_PER_TOKEN)
+
+
+async def _ensure_credit_balance(user_id: str) -> None:
+    """Set credit_balance from token_balance if missing (migration)."""
+    doc = await db.users.find_one({"id": user_id}, {"credit_balance": 1, "token_balance": 1})
+    if not doc or doc.get("credit_balance") is not None:
+        return
+    cred = (doc.get("token_balance") or 0) // CREDITS_PER_TOKEN
+    await db.users.update_one({"id": user_id}, {"$set": {"credit_balance": cred}})
+
+
+# Disposable email block (fraud prevention)
+DISPOSABLE_EMAIL_DOMAINS = frozenset([
+    "10minutemail.com", "guerrillamail.com", "tempmail.com", "mailinator.com",
+    "throwaway.email", "temp-mail.org", "fakeinbox.com", "trashmail.com", "yopmail.com",
+])
+
+def _is_disposable_email(email: str) -> bool:
+    domain = (email or "").strip().split("@")[-1].lower()
+    return domain in DISPOSABLE_EMAIL_DOMAINS
+
+
+# Referral: 100 credits each (free tier only — referrer reward only if referrer is on free plan). Safest to avoid mismatch. 10/month cap, 30-day expiry.
+REFERRAL_CREDITS = 100
+REFERRAL_CAP_PER_MONTH = 10
+REFERRAL_EXPIRY_DAYS = 30
+
+def _generate_referral_code() -> str:
+    return "".join(random.choices("abcdefghjkmnpqrstuvwxyz23456789", k=8))
+
+async def _apply_referral_on_signup(referee_id: str, ref_code: Optional[str] = None) -> None:
+    """Grant 100 credits each when referee completes sign-up. Referrer reward only if referrer is on free plan (free tier only). Cap 10/month per referrer."""
+    if not ref_code or not ref_code.strip():
+        return
+    ref_code = ref_code.strip().lower()
+    ref_row = await db.referral_codes.find_one({"code": ref_code})
+    if not ref_row:
+        return
+    referrer_id = ref_row.get("user_id")
+    if not referrer_id or referrer_id == referee_id:
+        return
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    count = await db.referrals.count_documents({"referrer_id": referrer_id, "signup_completed_at": {"$gte": month_start.isoformat()}})
+    if count >= REFERRAL_CAP_PER_MONTH:
+        return
+    referrer_doc = await db.users.find_one({"id": referrer_id}, {"plan": 1})
+    referrer_plan = (referrer_doc or {}).get("plan") or "free"
+    reward_referrer = referrer_plan == "free"  # free tier only: referrer gets credits only if on free plan
+    expiry_at = (now + timedelta(days=REFERRAL_EXPIRY_DAYS)).isoformat()
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer_id,
+        "referee_id": referee_id,
+        "status": "completed",
+        "signup_completed_at": now.isoformat(),
+        "referrer_rewarded_at": now.isoformat(),
+        "created_at": now.isoformat(),
+    })
+    # Referee always gets 100 (new user = free tier). Referrer gets 100 only if referrer is on free plan.
+    to_grant = [(referee_id, "Referral (referee)")]
+    if reward_referrer:
+        to_grant.append((referrer_id, "Referral (referrer)"))
+    for uid, desc in to_grant:
+        await db.users.update_one({"id": uid}, {"$inc": {"credit_balance": REFERRAL_CREDITS}})
+        await db.token_ledger.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": uid,
+            "credits": REFERRAL_CREDITS,
+            "type": "referral",
+            "description": desc,
+            "credit_expires_at": expiry_at,
+            "created_at": now.isoformat(),
+        })
+    logger.info(f"Referral: granted {REFERRAL_CREDITS} to referee {referee_id}" + (f" and referrer {referrer_id} (free tier)" if reward_referrer else " (referrer not on free tier, no referrer reward)"))
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -287,6 +413,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        if user.get("suspended"):
+            raise HTTPException(status_code=403, detail="Account suspended")
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -317,7 +445,7 @@ async def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(
     if request:
         api_key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
         if api_key and (api_key in PUBLIC_API_KEYS or await _check_api_key_db(api_key)):
-            return {"id": f"api_key_{api_key[:8]}", "token_balance": 999999, "public_api": True}
+            return {"id": f"api_key_{api_key[:8]}", "token_balance": 999999, "credit_balance": 999999, "plan": "agency", "public_api": True}
     return None
 
 def detect_task_type(message: str) -> str:
@@ -487,18 +615,18 @@ async def _call_llm_with_fallback(
     raise last_error or Exception("No model succeeded. Add OpenAI or Anthropic API key in Settings or .env.")
 
 # ==================== AI CHAT ROUTES ====================
-# Prepay control: never call the LLM unless user has at least this many tokens (we pay the provider per call).
-MIN_BALANCE_FOR_LLM_CALL = 5_000
+# Prepay: require at least MIN_CREDITS_FOR_LLM credits (legacy MIN_BALANCE_FOR_LLM_CALL = 5000 tokens ≈ 5 credits)
+MIN_BALANCE_FOR_LLM_CALL = 5_000  # legacy token value; we check credits now
 
 @api_router.post("/ai/chat")
 async def ai_chat(data: ChatMessage, user: dict = Depends(get_optional_user)):
-    """Multi-model AI chat with auto-selection and fallback on failure. Requires sufficient token balance (prepay)."""
-    if user is not None:
-        balance = user.get("token_balance", 0)
-        if balance < MIN_BALANCE_FOR_LLM_CALL:
+    """Multi-model AI chat with auto-selection and fallback on failure. Requires sufficient credits (prepay)."""
+    if user is not None and not user.get("public_api"):
+        credits = _user_credits(user)
+        if credits < MIN_CREDITS_FOR_LLM:
             raise HTTPException(
                 status_code=402,
-                detail=f"Insufficient tokens. You have {balance:,}. Need at least {MIN_BALANCE_FOR_LLM_CALL:,} to run a build. Buy more in Token Center."
+                detail=f"Insufficient credits. You have {credits}. Need at least {MIN_CREDITS_FOR_LLM} to run a build. Buy more in Credit Center."
             )
     try:
         user_keys = await get_workspace_api_keys(user)
@@ -523,16 +651,12 @@ async def ai_chat(data: ChatMessage, user: dict = Depends(get_optional_user)):
             "tokens_used": tokens_used,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        if user:
-            # Deduct actual usage; never take more than current balance (prepay: we only consume what they have).
-            current = await db.users.find_one({"id": user["id"]}, {"token_balance": 1})
-            bal = (current or {}).get("token_balance", 0)
-            deduct = min(tokens_used, bal)
-            if deduct > 0:
-                await db.users.update_one(
-                    {"id": user["id"]},
-                    {"$inc": {"token_balance": -deduct}}
-                )
+        if user and not user.get("public_api"):
+            cred = _user_credits(user)
+            credit_deduct = min(_tokens_to_credits(tokens_used), cred)
+            if credit_deduct > 0:
+                await _ensure_credit_balance(user["id"])
+                await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -credit_deduct}})
         return {
             "response": response,
             "model_used": model_used,
@@ -560,7 +684,9 @@ async def _stream_string_chunks(text: str, chunk_size: int = 8):
 
 @api_router.post("/ai/chat/stream")
 async def ai_chat_stream(data: ChatMessage, user: dict = Depends(get_optional_user)):
-    """Stream AI response in chunks (real-time code streaming). Uses model fallback on failure."""
+    """Stream AI response in chunks (real-time code streaming). Requires sufficient credits."""
+    if user and not user.get("public_api") and _user_credits(user) < MIN_CREDITS_FOR_LLM:
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. Need at least {MIN_CREDITS_FOR_LLM}. Buy more in Credit Center.")
     async def generate():
         try:
             user_keys = await get_workspace_api_keys(user)
@@ -588,12 +714,12 @@ async def ai_chat_stream(data: ChatMessage, user: dict = Depends(get_optional_us
                 "tokens_used": tokens_used,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
-            if user:
-                current = await db.users.find_one({"id": user["id"]}, {"token_balance": 1})
-                bal = (current or {}).get("token_balance", 0)
-                deduct = min(tokens_used, bal)
-                if deduct > 0:
-                    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_balance": -deduct}})
+            if user and not user.get("public_api"):
+                cred = _user_credits(user)
+                credit_deduct = min(_tokens_to_credits(tokens_used), cred)
+                if credit_deduct > 0:
+                    await _ensure_credit_balance(user["id"])
+                    await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -credit_deduct}})
             async for chunk in _stream_string_chunks(response):
                 yield json.dumps({"chunk": chunk}) + "\n"
             yield json.dumps({
@@ -976,6 +1102,28 @@ async def validate_and_fix(data: ValidateAndFixBody, user: dict = Depends(get_op
 
 # ==================== EXPORT ZIP / GITHUB / DEPLOY ====================
 
+DEPLOY_README = """# Deploy this project
+
+## Vercel (recommended)
+1. Go to https://vercel.com/new
+2. Import this folder or upload the ZIP (Vercel will extract it).
+3. Set build command: (leave default for Create React App)
+4. Deploy.
+
+## Netlify
+1. Go to https://app.netlify.com/drop
+2. Drag and drop this folder (or the ZIP).
+3. Site deploys automatically.
+
+## Railway
+1. Go to https://railway.app/new
+2. Create a new project, then "Deploy from GitHub repo" (push this folder to a repo first) or use "Empty project" and deploy via Railway CLI from this folder.
+3. Add a service (e.g. Web Service for Node/React, or static site).
+4. Deploy.
+
+Generated with CrucibAI.
+"""
+
 @api_router.post("/export/zip")
 async def export_zip(data: ExportFilesBody):
     """Export project files as a ZIP download."""
@@ -1028,25 +1176,10 @@ Generated with [CrucibAI](https://crucibai.com).
 
 @api_router.post("/export/deploy")
 async def export_deploy(data: ExportFilesBody):
-    """Export project as ZIP for one-click deploy (Vercel/Netlify)."""
-    readme = """# Deploy this project
-
-## Vercel (recommended)
-1. Go to https://vercel.com/new
-2. Import this folder or upload the ZIP (Vercel will extract it).
-3. Set build command: (leave default for Create React App)
-4. Deploy.
-
-## Netlify
-1. Go to https://app.netlify.com/drop
-2. Drag and drop this folder (or the ZIP).
-3. Site deploys automatically.
-
-Generated with CrucibAI.
-"""
+    """Export project as ZIP for one-click deploy (Vercel/Netlify/Railway)."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("README-DEPLOY.md", readme)
+        zf.writestr("README-DEPLOY.md", DEPLOY_README)
         for name, content in data.files.items():
             safe_name = name.lstrip("/")
             if safe_name:
@@ -1081,7 +1214,7 @@ async def stripe_create_checkout(data: TokenPurchase, user: dict = Depends(get_c
             line_items=[{
                 "price_data": {
                     "currency": "usd",
-                    "product_data": {"name": f"CrucibAI Tokens - {data.bundle}", "description": f"{bundle['tokens']:,} tokens"},
+                    "product_data": {"name": f"CrucibAI - {bundle.get('name', data.bundle)}", "description": f"{bundle.get('credits', bundle['tokens'] // CREDITS_PER_TOKEN)} credits"},
                     "unit_amount": int(bundle["price"] * 100),
                 },
                 "quantity": 1,
@@ -1089,7 +1222,7 @@ async def stripe_create_checkout(data: TokenPurchase, user: dict = Depends(get_c
             success_url=f"{FRONTEND_URL}/app/tokens?success=1&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{FRONTEND_URL}/app/tokens?canceled=1",
             client_reference_id=user["id"],
-            metadata={"bundle": data.bundle, "tokens": str(bundle["tokens"])},
+            metadata={"bundle": data.bundle, "tokens": str(bundle["tokens"]), "credits": str(bundle.get("credits", bundle["tokens"] // CREDITS_PER_TOKEN))},
         )
         return {"url": session.url, "session_id": session.id}
     except Exception as e:
@@ -1114,28 +1247,79 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
         session = event["data"]["object"]
         user_id = session.get("client_reference_id")
         bundle_key = session.get("metadata", {}).get("bundle")
-        tokens_str = session.get("metadata", {}).get("tokens", "0")
+        meta = session.get("metadata", {})
+        credits_str = meta.get("credits")
+        tokens_str = meta.get("tokens", "0")
         if not user_id or not bundle_key:
             logger.warning("Stripe session missing client_reference_id or metadata.bundle")
             return {"received": True}
-        tokens = int(tokens_str)
-        await db.users.update_one({"id": user_id}, {"$inc": {"token_balance": tokens}})
+        credits = int(credits_str) if credits_str else (int(tokens_str) // CREDITS_PER_TOKEN)
+        tokens = int(tokens_str) if tokens_str else (credits * CREDITS_PER_TOKEN)
+        price = TOKEN_BUNDLES.get(bundle_key, {}).get("price", 0)
+        await db.users.update_one({"id": user_id}, {"$inc": {"token_balance": tokens, "credit_balance": credits}})
         await db.token_ledger.insert_one({
             "id": str(uuid.uuid4()),
             "user_id": user_id,
             "tokens": tokens,
+            "credits": credits,
             "type": "purchase",
             "bundle": bundle_key,
+            "price": price,
             "stripe_session_id": session.get("id"),
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        logger.info(f"Stripe: added {tokens} tokens to user {user_id}")
+        logger.info(f"Stripe: added {credits} credits to user {user_id}")
     return {"received": True}
+
+
+# ==================== ENTERPRISE CONTACT ====================
+
+@api_router.post("/enterprise/contact")
+async def enterprise_contact(data: EnterpriseContact):
+    """Capture enterprise inquiry. Stored in db.enterprise_inquiries; optional email if ENTERPRISE_CONTACT_EMAIL set."""
+    if not (data.company and data.company.strip()):
+        raise HTTPException(status_code=400, detail="Company is required.")
+    inquiry = {
+        "id": str(uuid.uuid4()),
+        "company": (data.company or "").strip(),
+        "email": data.email,
+        "team_size": (data.team_size or "").strip() or None,
+        "use_case": (data.use_case or "").strip() or None,
+        "budget": (getattr(data, "budget", None) or "").strip() or None,
+        "message": (data.message or "").strip() or None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.enterprise_inquiries.insert_one(inquiry)
+    # Optional: send email to sales if env set (e.g. ENTERPRISE_CONTACT_EMAIL=ben@crucibai.com)
+    contact_email = os.environ.get("ENTERPRISE_CONTACT_EMAIL")
+    if contact_email:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(
+                f"Enterprise inquiry:\nCompany: {inquiry['company']}\nEmail: {inquiry['email']}\nTeam size: {inquiry.get('team_size') or '—'}\nUse case: {inquiry.get('use_case') or '—'}\nBudget: {inquiry.get('budget') or '—'}\nMessage: {inquiry.get('message') or '—'}"
+            )
+            msg["Subject"] = f"CrucibAI Enterprise: {inquiry['company']}"
+            msg["From"] = os.environ.get("SMTP_FROM", "noreply@crucibai.com")
+            msg["To"] = contact_email
+            # Only send if SMTP is configured; otherwise skip (no failure)
+            if os.environ.get("SMTP_HOST"):
+                with smtplib.SMTP(os.environ.get("SMTP_HOST"), int(os.environ.get("SMTP_PORT", 587))) as s:
+                    if os.environ.get("SMTP_USER"):
+                        s.starttls()
+                        s.login(os.environ.get("SMTP_USER", ""), os.environ.get("SMTP_PASSWORD", ""))
+                    s.send_message(msg)
+        except Exception as e:
+            logger.warning(f"Enterprise contact email failed: {e}")
+    return {"status": "received", "message": "We'll be in touch soon.", "contact_email": contact_email or "sales@crucibai.com"}
+
 
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
+    if _is_disposable_email(data.email):
+        raise HTTPException(status_code=400, detail="Disposable email addresses are not allowed.")
     existing = await db.users.find_one({"email": data.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -1146,7 +1330,8 @@ async def register(data: UserRegister):
         "email": data.email,
         "password": hash_password(data.password),
         "name": data.name,
-        "token_balance": 50000,
+        "token_balance": FREE_TIER_CREDITS * CREDITS_PER_TOKEN,
+        "credit_balance": FREE_TIER_CREDITS,
         "plan": "free",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1155,11 +1340,13 @@ async def register(data: UserRegister):
     await db.token_ledger.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user_id,
-        "tokens": 50000,
+        "tokens": FREE_TIER_CREDITS * CREDITS_PER_TOKEN,
+        "credits": FREE_TIER_CREDITS,
         "type": "bonus",
-        "description": "Welcome bonus tokens",
+        "description": "Welcome (Free tier)",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
+    await _apply_referral_on_signup(user_id, getattr(data, "ref", None))
     
     token = create_token(user_id)
     return {"token": token, "user": {k: v for k, v in user.items() if k != "password" and k != "_id"}}
@@ -1176,7 +1363,15 @@ async def login(data: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    return {k: v for k, v in user.items() if k != "password"}
+    await _ensure_credit_balance(user["id"])
+    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    u["credit_balance"] = _user_credits(u)
+    if u["id"] in ADMIN_USER_IDS and not u.get("admin_role"):
+        u["admin_role"] = "owner"
+    return {k: v for k, v in u.items() if k != "password"}
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
@@ -1245,19 +1440,22 @@ async def auth_google_callback(request: Request, code: Optional[str] = None, sta
         user = {
             "id": user_id,
             "email": email,
-            "password": "",  # no password for OAuth
+            "password": "",
             "name": name,
-            "token_balance": 50000,
+            "token_balance": FREE_TIER_CREDITS * CREDITS_PER_TOKEN,
+            "credit_balance": FREE_TIER_CREDITS,
             "plan": "free",
+            "auth_provider": "google",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.users.insert_one(user)
         await db.token_ledger.insert_one({
             "id": str(uuid.uuid4()),
             "user_id": user_id,
-            "tokens": 50000,
+            "tokens": FREE_TIER_CREDITS * CREDITS_PER_TOKEN,
+            "credits": FREE_TIER_CREDITS,
             "type": "bonus",
-            "description": "Welcome bonus tokens",
+            "description": "Welcome (Free tier)",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
     token = create_token(user["id"])
@@ -1279,7 +1477,7 @@ async def auth_google_callback(request: Request, code: Optional[str] = None, sta
 
 @api_router.get("/tokens/bundles")
 async def get_bundles():
-    return {"bundles": TOKEN_BUNDLES}
+    return {"bundles": TOKEN_BUNDLES, "annual_prices": ANNUAL_PRICES}
 
 @api_router.post("/tokens/purchase")
 async def purchase_tokens(data: TokenPurchase, user: dict = Depends(get_current_user)):
@@ -1287,25 +1485,30 @@ async def purchase_tokens(data: TokenPurchase, user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail="Invalid bundle")
     
     bundle = TOKEN_BUNDLES[data.bundle]
-    new_balance = user["token_balance"] + bundle["tokens"]
-    await db.users.update_one({"id": user["id"]}, {"$set": {"token_balance": new_balance}})
+    credits = bundle.get("credits", bundle["tokens"] // CREDITS_PER_TOKEN)
+    await _ensure_credit_balance(user["id"])
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_balance": bundle["tokens"], "credit_balance": credits}})
     
     await db.token_ledger.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "tokens": bundle["tokens"],
+        "credits": credits,
         "type": "purchase",
         "bundle": data.bundle,
         "price": bundle["price"],
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    return {"message": "Purchase successful", "new_balance": new_balance, "tokens_added": bundle["tokens"]}
+    new_cred = _user_credits(user) + credits
+    return {"message": "Purchase successful", "new_balance": new_cred, "credits_added": credits, "tokens_added": bundle["tokens"]}
 
 @api_router.get("/tokens/history")
 async def get_token_history(user: dict = Depends(get_current_user)):
+    await _ensure_credit_balance(user["id"])
+    cred = _user_credits(user)
     history = await db.token_ledger.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return {"history": history, "current_balance": user["token_balance"]}
+    return {"history": history, "current_balance": cred, "credit_balance": cred}
 
 @api_router.get("/tokens/usage")
 async def get_token_usage(user: dict = Depends(get_current_user)):
@@ -1328,8 +1531,39 @@ async def get_token_usage(user: dict = Depends(get_current_user)):
         "total_used": total_used,
         "by_agent": by_agent,
         "by_project": by_project,
-        "balance": user["token_balance"]
+        "balance": _user_credits(user),
+        "credit_balance": _user_credits(user)
     }
+
+# ==================== REFERRAL ROUTES ====================
+
+@api_router.get("/referrals/code")
+async def get_referral_code(user: dict = Depends(get_current_user)):
+    """Return or create user's referral code. Share link: /auth?ref=CODE"""
+    row = await db.referral_codes.find_one({"user_id": user["id"]}, {"_id": 0})
+    if row:
+        return {"code": row["code"], "link": f"{FRONTEND_URL or ''}/auth?ref={row['code']}"}
+    code = _generate_referral_code()
+    while await db.referral_codes.find_one({"code": code}):
+        code = _generate_referral_code()
+    await db.referral_codes.insert_one({
+        "user_id": user["id"],
+        "code": code,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"code": code, "link": f"{FRONTEND_URL or ''}/auth?ref={code}"}
+
+@api_router.get("/referrals/stats")
+async def get_referral_stats(user: dict = Depends(get_current_user)):
+    """Referrals sent this month and total."""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month = await db.referrals.count_documents({
+        "referrer_id": user["id"],
+        "signup_completed_at": {"$gte": month_start.isoformat()},
+    })
+    total = await db.referrals.count_documents({"referrer_id": user["id"]})
+    return {"this_month": this_month, "total": total, "cap": REFERRAL_CAP_PER_MONTH}
 
 # ==================== AGENTS ROUTES ====================
 
@@ -1569,6 +1803,18 @@ async def agent_export_excel(data: AgentExportExcelBody, user: dict = Depends(ge
     except ImportError:
         raise HTTPException(status_code=501, detail="openpyxl not installed. pip install openpyxl")
 
+@api_router.post("/agents/run/export-markdown")
+async def agent_export_markdown(data: AgentExportMarkdownBody, user: dict = Depends(get_optional_user)):
+    """Markdown Export: returns a .md file from title and content (optional item 40)."""
+    title = (data.title or "Export").strip()[:80]
+    content = (data.content or "").strip()
+    body = f"# {title}\n\n{content}\n"
+    return Response(
+        content=body,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{title.replace(" ", "-")[:60]}.md"'},
+    )
+
 @api_router.post("/agents/run/scrape")
 async def agent_scrape(data: AgentScrapeBody, user: dict = Depends(get_optional_user)):
     """Scraping Agent: fetches URL and extracts main content with LLM. Uses your Settings keys when set."""
@@ -1614,12 +1860,25 @@ async def agent_automation_list(user: dict = Depends(get_optional_user)):
 
 # ==================== PROJECT ROUTES ====================
 
+FREE_TIER_MAX_PROJECTS = 3
+
 @api_router.post("/projects")
 async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    estimated = data.estimated_tokens or 675000
-    
-    if user["token_balance"] < estimated:
-        raise HTTPException(status_code=400, detail=f"Insufficient tokens. Need {estimated}, have {user['token_balance']}")
+    plan = user.get("plan", "free")
+    if plan == "free":
+        count = await db.projects.count_documents({"user_id": user["id"]})
+        if count >= FREE_TIER_MAX_PROJECTS:
+            raise HTTPException(
+                status_code=403,
+                detail="You've saved 3 projects. Upgrade to Builder to save unlimited projects and get faster builds.",
+                headers={"X-Upgrade-Required": "builder"}
+            )
+    estimated_tokens = data.estimated_tokens or 675000
+    estimated_credits = _tokens_to_credits(estimated_tokens)
+    await _ensure_credit_balance(user["id"])
+    cred = _user_credits(user)
+    if cred < estimated_credits:
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. Need {estimated_credits}, have {cred}. Buy more in Credit Center.")
     
     project_id = str(uuid.uuid4())
     project = {
@@ -1630,7 +1889,7 @@ async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks,
         "project_type": data.project_type,
         "requirements": data.requirements,
         "status": "queued",
-        "tokens_allocated": estimated,
+        "tokens_allocated": estimated_tokens,
         "tokens_used": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
@@ -1638,7 +1897,7 @@ async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks,
     }
     await db.projects.insert_one(project)
     
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_balance": -estimated}})
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -estimated_credits}})
     
     background_tasks.add_task(run_orchestration_v2, project_id, user["id"])
     
@@ -1655,6 +1914,47 @@ async def get_project(project_id: str, user: dict = Depends(get_current_user)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"project": project}
+
+
+async def _build_project_deploy_zip(project_id: str, user_id: str):
+    """Build deploy ZIP for a project. Raises HTTPException if not found or no deploy_files."""
+    project = await db.projects.find_one({"id": project_id, "user_id": user_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    deploy_files = project.get("deploy_files") or {}
+    if not deploy_files:
+        raise HTTPException(status_code=404, detail="No deploy snapshot for this project. Open in Workspace and use Deploy there, or re-run the build.")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("README-DEPLOY.md", DEPLOY_README)
+        for name, content in deploy_files.items():
+            safe_name = (name or "").lstrip("/")
+            if safe_name:
+                zf.writestr(safe_name, content if isinstance(content, str) else str(content))
+    buf.seek(0)
+    return buf
+
+
+@api_router.get("/projects/{project_id}/deploy/zip")
+async def get_project_deploy_zip(project_id: str, user: dict = Depends(get_current_user)):
+    """Download deploy ZIP for a completed project (Vercel/Netlify/Railway). Requires project to have deploy_files (stored at completion)."""
+    buf = await _build_project_deploy_zip(project_id, user["id"])
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=crucibai-deploy.zip"},
+    )
+
+
+@api_router.get("/projects/{project_id}/export/deploy")
+async def get_project_export_deploy(project_id: str, user: dict = Depends(get_current_user)):
+    """Alias for deploy ZIP: same deploy-ready package keyed by project_id (for Deploy UX)."""
+    buf = await _build_project_deploy_zip(project_id, user["id"])
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=crucibai-deploy.zip"},
+    )
 
 
 @api_router.post("/projects/{project_id}/retry-phase")
@@ -1694,7 +1994,7 @@ BUILD_PHASES = [
     {"id": "generating", "name": "Generating", "agents": ["Frontend Generation", "Backend Generation", "Database Agent", "API Integration", "Test Generation", "Image Generation"]},
     {"id": "validating", "name": "Validating", "agents": ["Security Checker", "Test Executor", "UX Auditor", "Performance Analyzer"]},
     {"id": "deployment", "name": "Deployment", "agents": ["Deployment Agent", "Error Recovery", "Memory Agent"]},
-    {"id": "export_automation", "name": "Export & automation", "agents": ["PDF Export", "Excel Export", "Scraping Agent", "Automation Agent"]},
+    {"id": "export_automation", "name": "Export & automation", "agents": ["PDF Export", "Excel Export", "Markdown Export", "Scraping Agent", "Automation Agent"]},
 ]
 
 @api_router.get("/build/phases")
@@ -1705,7 +2005,7 @@ async def get_build_phases():
 SWARM_TOKEN_MULTIPLIER = 1.5  # users pay more when using swarm (parallel); we don't lose money
 
 @api_router.post("/build/plan")
-async def build_plan(data: BuildPlanRequest, user: dict = Depends(get_optional_user)):
+async def build_plan(data: BuildPlanRequest, user: dict = Depends(get_current_user)):
     """Return a structured plan for a build request. swarm=True runs plan and suggestions in parallel (faster, higher token cost). build_kind: fullstack|mobile|saas|bot|ai_agent."""
     prompt = (data.prompt or "").strip()
     if not prompt:
@@ -1714,12 +2014,22 @@ async def build_plan(data: BuildPlanRequest, user: dict = Depends(get_optional_u
     if build_kind not in ("fullstack", "mobile", "saas", "bot", "ai_agent", "game", "trading", "any"):
         build_kind = "fullstack"
     use_swarm = getattr(data, "swarm", False) and user is not None
-    if user is not None:
-        balance = user.get("token_balance", 0)
-        required = MIN_BALANCE_FOR_LLM_CALL * (SWARM_TOKEN_MULTIPLIER if use_swarm else 1)
-        if balance < required:
-            raise HTTPException(status_code=402, detail=f"Insufficient tokens for {'Swarm ' if use_swarm else ''}plan. Need at least {int(required):,}. Buy more in Token Center.")
+    if user is not None and not user.get("public_api"):
+        credits = _user_credits(user)
+        required = MIN_CREDITS_FOR_LLM * (SWARM_TOKEN_MULTIPLIER if use_swarm else 1)
+        if credits < required:
+            raise HTTPException(status_code=402, detail=f"Insufficient credits for {'Swarm ' if use_swarm else ''}plan. Need at least {int(required)}. Buy more in Credit Center.")
+        # Free/referral credits = landing only: if user has no paid purchase and requests non-landing, block
+        plan = user.get("plan") or "free"
+        if plan == "free" and build_kind != "landing":
+            has_paid = await db.token_ledger.find_one({"user_id": user["id"], "type": "purchase"})
+            if not has_paid:
+                raise HTTPException(
+                    status_code=402,
+                    detail="Full apps (CRUD, SaaS, mobile, etc.) require paid credits. Free tier is for landing pages only. Upgrade or buy add-on credits in Credit Center.",
+                )
     kind_instruction = {
+        "landing": " The user wants a LANDING PAGE (single page or simple multi-section). Plan for hero, features, CTA, optional waitlist/form; no full app backend or SaaS billing.",
         "mobile": " The user wants a MOBILE APP (React Native, Flutter, or PWA). Plan for mobile-first UI, native or cross-platform, and app store / install considerations.",
         "saas": " The user wants a SAAS product. Plan for multi-tenant or single-tenant with billing: subscriptions (e.g. Stripe), plans/tiers, auth, and dashboard.",
         "bot": " The user wants a BOT (Slack, Discord, Telegram, or webhook). Plan for event handlers, commands, and optional persistence; no traditional web UI unless a simple status page.",
@@ -1813,12 +2123,12 @@ End with exactly: "Let me build this now."
         tokens_estimate = max(1000, len(plan_text) * 2 + sum(len(s) for s in suggestions) * 2)
         if use_swarm:
             tokens_estimate = int(tokens_estimate * SWARM_TOKEN_MULTIPLIER)
-        if user:
-            current = await db.users.find_one({"id": user["id"]}, {"token_balance": 1})
-            bal = (current or {}).get("token_balance", 0)
-            deduct = min(tokens_estimate, bal)
-            if deduct > 0:
-                await db.users.update_one({"id": user["id"]}, {"$inc": {"token_balance": -deduct}})
+        if user and not user.get("public_api"):
+            cred = _user_credits(user)
+            credit_deduct = min(_tokens_to_credits(tokens_estimate), cred)
+            if credit_deduct > 0:
+                await _ensure_credit_balance(user["id"])
+                await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -credit_deduct}})
         return {"plan_text": plan_text, "suggestions": suggestions, "model_used": "auto", "swarm_used": use_swarm, "plan_tokens": tokens_estimate}
     except HTTPException:
         raise
@@ -1876,6 +2186,7 @@ _ORCHESTRATION_AGENTS = [
     ("Memory Agent", 25000, "You are a Memory Agent. Summarize the project in 2-3 lines for reuse."),
     ("PDF Export", 30000, "You are PDF Export. Describe what a one-page project summary PDF would include."),
     ("Excel Export", 25000, "You are Excel Export. Suggest 3-5 columns for a project tracking spreadsheet."),
+    ("Markdown Export", 20000, "You are Markdown Export. Output a short project summary in Markdown (headings, bullets)."),
     ("Scraping Agent", 35000, "You are a Scraping Agent. Suggest 2-3 data sources or URLs to scrape for this project."),
     ("Automation Agent", 30000, "You are an Automation Agent. Suggest 2-3 automated tasks or cron jobs for this project."),
 ]
@@ -1980,15 +2291,17 @@ async def run_orchestration(project_id: str, user_id: str):
     
     project = await db.projects.find_one({"id": project_id})
     if project:
-        refund = project["tokens_allocated"] - total_used
-        if refund > 0:
-            await db.users.update_one({"id": user_id}, {"$inc": {"token_balance": refund}})
+        refund_tokens = project["tokens_allocated"] - total_used
+        if refund_tokens > 0:
+            refund_credits = refund_tokens // CREDITS_PER_TOKEN
+            await db.users.update_one({"id": user_id}, {"$inc": {"credit_balance": refund_credits}})
             await db.token_ledger.insert_one({
                 "id": str(uuid.uuid4()),
                 "user_id": user_id,
-                "tokens": refund,
+                "tokens": refund_tokens,
+                "credits": refund_credits,
                 "type": "refund",
-                "description": f"Unused tokens from project {project_id[:8]}",
+                "description": f"Unused from project {project_id[:8]}",
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
 
@@ -2166,6 +2479,15 @@ async def run_orchestration_v2(project_id: str, user_id: str):
     db_schema = (results.get("Database Agent") or {}).get("output") or ""
     tests = (results.get("Test Generation") or {}).get("output") or ""
     quality = score_generated_code(frontend_code=fe, backend_code=be, database_schema=db_schema, test_code=tests)
+    deploy_files = {}
+    if fe:
+        deploy_files["src/App.jsx"] = fe
+    if be:
+        deploy_files["server.py"] = be
+    if db_schema:
+        deploy_files["schema.sql"] = db_schema
+    if tests:
+        deploy_files["tests/test_basic.py"] = tests
     set_payload = {
         "status": "completed",
         "tokens_used": total_used,
@@ -2174,6 +2496,8 @@ async def run_orchestration_v2(project_id: str, user_id: str):
         "quality_score": quality,
         "orchestration_version": "v2_dag",
     }
+    if deploy_files:
+        set_payload["deploy_files"] = deploy_files
     if suggest_retry_phase is not None:
         set_payload["suggest_retry_phase"] = suggest_retry_phase
         set_payload["suggest_retry_reason"] = suggest_retry_reason or "Retry code generation?"
@@ -2242,9 +2566,11 @@ async def fork_example(name: str, user: dict = Depends(get_current_user)):
     if not ex:
         raise HTTPException(status_code=404, detail="Example not found")
     project_id = str(uuid.uuid4())
-    estimated = 100000
-    if user.get("token_balance", 0) < estimated:
-        raise HTTPException(status_code=400, detail=f"Insufficient tokens. Need {estimated}, have {user.get('token_balance', 0)}")
+    estimated_credits = _tokens_to_credits(100000)
+    await _ensure_credit_balance(user["id"])
+    cred = _user_credits(user)
+    if cred < estimated_credits:
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. Need {estimated_credits}, have {cred}. Buy more in Credit Center.")
     code = ex.get("generated_code") or {}
     project = {
         "id": project_id,
@@ -2282,6 +2608,419 @@ async def get_patterns(user: dict = Depends(get_optional_user)):
     ]
     return {"patterns": patterns}
 
+# ==================== ADMIN (Operational Infrastructure) ====================
+
+ADMIN_USER_IDS = [x.strip() for x in (os.environ.get("ADMIN_USER_IDS") or "").split(",") if x.strip()]
+ADMIN_ROLES = ("owner", "operations", "support", "analyst")
+SUPPORT_GRANT_CAP_PER_MONTH = 50  # max credits support can grant per user per month
+
+def get_current_admin(required_roles: tuple = ADMIN_ROLES):
+    """Dependency: require authenticated user with admin_role in required_roles or id in ADMIN_USER_IDS."""
+    async def _inner(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        if not credentials:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+            if user.get("suspended"):
+                raise HTTPException(status_code=403, detail="Account suspended")
+            role = user.get("admin_role")
+            if role and role in required_roles:
+                return user
+            if user["id"] in ADMIN_USER_IDS and "owner" in required_roles:
+                return {**user, "admin_role": user.get("admin_role") or "owner"}
+            raise HTTPException(status_code=403, detail="Admin access required")
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+    return _inner
+
+class GrantCreditsBody(BaseModel):
+    credits: int
+    reason: Optional[str] = "Support bonus"
+
+class SuspendBody(BaseModel):
+    reason: str
+
+async def _revenue_for_query(q: dict) -> float:
+    rows = await db.token_ledger.find(q).to_list(5000)
+    total = 0.0
+    for r in rows:
+        p = r.get("price")
+        if p is not None:
+            total += float(p)
+        else:
+            total += float(TOKEN_BUNDLES.get(r.get("bundle", ""), {}).get("price", 0))
+    return round(total, 2)
+
+@api_router.get("/admin/dashboard")
+async def admin_dashboard(admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
+    """Overview: users, revenue, signups, referral count, fraud flags stub, health."""
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()[:10]
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
+    total_users = await db.users.count_documents({})
+    signups_today = await db.users.count_documents({"created_at": {"$gte": today_start}})
+    signups_week = await db.users.count_documents({"created_at": {"$gte": week_ago}})
+    referral_count = await db.referrals.count_documents({}) if hasattr(db, "referrals") else 0
+    projects_today = await db.projects.count_documents({"created_at": {"$gte": today_start}})
+    revenue_today = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": today_start}})
+    revenue_week = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": week_ago}})
+    revenue_month = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": month_ago}})
+    return {
+        "users_online": total_users,
+        "total_users": total_users,
+        "signups_today": signups_today,
+        "signups_week": signups_week,
+        "referral_count": referral_count,
+        "projects_today": projects_today,
+        "revenue_today": revenue_today,
+        "revenue_week": revenue_week,
+        "revenue_month": revenue_month,
+        "fraud_flags_count": 0,
+        "system_health": "ok",
+    }
+
+@api_router.get("/admin/analytics/overview")
+async def admin_analytics_overview(admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()[:10]
+    week_ago = (now - timedelta(days=7)).isoformat()
+    total_users = await db.users.count_documents({})
+    projects_today = await db.projects.count_documents({"created_at": {"$gte": today_start}})
+    signups_today = await db.users.count_documents({"created_at": {"$gte": today_start}})
+    signups_week = await db.users.count_documents({"created_at": {"$gte": week_ago}})
+    return {
+        "total_users": total_users,
+        "projects_today": projects_today,
+        "signups_today": signups_today,
+        "signups_week": signups_week,
+    }
+
+def _parse_date(s: Optional[str]):
+    """Parse YYYY-MM-DD to date. Return None if invalid."""
+    if not s or len(s) < 10:
+        return None
+    try:
+        from datetime import date as date_type
+        return date_type(int(s[:4]), int(s[5:7]), int(s[8:10]))
+    except (ValueError, IndexError):
+        return None
+
+@api_router.get("/admin/analytics/daily")
+async def admin_analytics_daily(
+    days: int = 7,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    format: Optional[str] = None,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """Daily metrics. Use days (default 7) or from_date+to_date (YYYY-MM-DD). format=csv for CSV export."""
+    now = datetime.now(timezone.utc)
+    out = []
+    start_d = _parse_date(from_date)
+    end_d = _parse_date(to_date)
+    if start_d and end_d and start_d <= end_d:
+        from datetime import date as date_type
+        delta = (end_d - start_d).days
+        for i in range(min(delta + 1, 365)):
+            d = (start_d + timedelta(days=i)).isoformat()
+            day_start = d + "T00:00:00"
+            day_end = d + "T23:59:59.999999"
+            signups = await db.users.count_documents({"created_at": {"$gte": day_start, "$lte": day_end}})
+            paid = await db.users.count_documents({"plan": {"$nin": ["free", None, ""]}, "created_at": {"$lte": day_end}})
+            rev = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": day_start, "$lte": day_end}})
+            out.append({"date": d, "signups": signups, "paid_users_cumulative": paid, "revenue": rev})
+    else:
+        for i in range(max(1, min(days, 90))):
+            d = (now - timedelta(days=i)).date().isoformat()
+            day_start = d + "T00:00:00"
+            day_end = d + "T23:59:59.999999"
+            signups = await db.users.count_documents({"created_at": {"$gte": day_start, "$lte": day_end}})
+            paid = await db.users.count_documents({"plan": {"$nin": ["free", None, ""]}, "created_at": {"$lte": day_end}})
+            rev = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": day_start, "$lte": day_end}})
+            out.append({"date": d, "signups": signups, "paid_users_cumulative": paid, "revenue": rev})
+        out = list(reversed(out))
+    if (format or "").lower() == "csv":
+        import csv
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["date", "signups", "paid_users_cumulative", "revenue"])
+        for row in out:
+            w.writerow([row["date"], row["signups"], row["paid_users_cumulative"], row["revenue"]])
+        return Response(content=buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=analytics-daily.csv"})
+    return {"daily": out}
+
+@api_router.get("/admin/analytics/weekly")
+async def admin_analytics_weekly(
+    weeks: int = 12,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """Weekly: signups and revenue per week. Optional from_date/to_date (YYYY-MM-DD) to limit range."""
+    now = datetime.now(timezone.utc)
+    out = []
+    start_d = _parse_date(from_date)
+    end_d = _parse_date(to_date)
+    for i in range(max(1, min(weeks, 52))):
+        week_end = now - timedelta(weeks=i)
+        week_start = week_end - timedelta(days=7)
+        ws, we = week_start.isoformat(), week_end.isoformat()
+        ws_date, we_date = ws[:10], we[:10]
+        if start_d and (week_start.date() < start_d or week_end.date() < start_d):
+            continue
+        if end_d and week_start.date() > end_d:
+            continue
+        signups = await db.users.count_documents({"created_at": {"$gte": ws, "$lt": we}})
+        rev = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": ws, "$lt": we}})
+        out.append({"week_start": ws_date, "week_end": we_date, "signups": signups, "revenue": rev})
+    return {"weekly": list(reversed(out))}
+
+@api_router.get("/admin/analytics/report")
+async def admin_analytics_report(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """Summary report for date range: total signups, total revenue, daily breakdown. For PDF/export."""
+    start_d = _parse_date(from_date)
+    end_d = _parse_date(to_date)
+    now = datetime.now(timezone.utc)
+    if not start_d or not end_d or start_d > end_d:
+        start_d = (now - timedelta(days=30)).date()
+        end_d = now.date()
+    delta = min((end_d - start_d).days + 1, 365)
+    total_signups = 0
+    total_revenue = 0.0
+    daily = []
+    for i in range(delta):
+        d = (start_d + timedelta(days=i)).isoformat()
+        day_start = d + "T00:00:00"
+        day_end = d + "T23:59:59.999999"
+        signups = await db.users.count_documents({"created_at": {"$gte": day_start, "$lte": day_end}})
+        rev = await _revenue_for_query({"type": "purchase", "created_at": {"$gte": day_start, "$lte": day_end}})
+        total_signups += signups
+        total_revenue += rev
+        daily.append({"date": d, "signups": signups, "revenue": rev})
+    return {
+        "from_date": start_d.isoformat(),
+        "to_date": end_d.isoformat(),
+        "total_signups": total_signups,
+        "total_revenue": round(total_revenue, 2),
+        "daily": daily,
+        "generated_at": now.isoformat(),
+    }
+
+@api_router.get("/admin/users")
+async def admin_list_users(
+    email: Optional[str] = None,
+    plan: Optional[str] = None,
+    limit: int = 50,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    q = {}
+    if email:
+        q["email"] = {"$regex": email, "$options": "i"}
+    if plan:
+        q["plan"] = plan
+    cursor = db.users.find(q, {"_id": 0, "password": 0}).sort("created_at", -1).limit(limit)
+    users = await cursor.to_list(length=limit)
+    for u in users:
+        u.pop("password", None)
+        u["credit_balance"] = _user_credits(u)
+    return {"users": users}
+
+@api_router.get("/admin/users/{user_id}")
+async def admin_user_profile(user_id: str, admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.pop("password", None)
+    user["credit_balance"] = _user_credits(user)
+    projects_count = await db.projects.count_documents({"user_id": user_id})
+    referrals = await db.referrals.find({"referrer_id": user_id}, {"_id": 0}).to_list(100) if hasattr(db, "referrals") else []
+    ledger = await db.token_ledger.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
+    purchases = await db.token_ledger.find({"user_id": user_id, "type": "purchase"}, {"_id": 0}).to_list(1000)
+    lifetime_revenue = round(sum(float(r.get("price") or TOKEN_BUNDLES.get(r.get("bundle", ""), {}).get("price", 0)) for r in purchases), 2)
+    return {
+        **user,
+        "projects_count": projects_count,
+        "referral_count": len(referrals),
+        "recent_ledger": ledger,
+        "last_login": user.get("last_login"),
+        "lifetime_revenue": lifetime_revenue,
+    }
+
+@api_router.post("/admin/users/{user_id}/grant-credits")
+async def admin_grant_credits(
+    user_id: str,
+    body: GrantCreditsBody,
+    admin: dict = Depends(get_current_admin(("owner", "operations", "support"))),
+):
+    role = admin.get("admin_role") or ("owner" if admin["id"] in ADMIN_USER_IDS else None)
+    if role == "support" and body.credits > SUPPORT_GRANT_CAP_PER_MONTH:
+        raise HTTPException(status_code=403, detail=f"Support can grant at most {SUPPORT_GRANT_CAP_PER_MONTH} credits per action")
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.users.update_one({"id": user_id}, {"$inc": {"credit_balance": body.credits}})
+    await db.token_ledger.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "credits": body.credits,
+        "type": "bonus",
+        "description": body.reason or "Support bonus",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "granted_by": admin["id"],
+    })
+    return {"ok": True, "credits_added": body.credits}
+
+@api_router.post("/admin/users/{user_id}/suspend")
+async def admin_suspend_user(
+    user_id: str,
+    body: SuspendBody,
+    admin: dict = Depends(get_current_admin(("owner", "operations"))),
+):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("admin_role") and target["id"] != admin["id"]:
+        raise HTTPException(status_code=403, detail="Cannot suspend another admin")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"suspended": True, "suspended_at": datetime.now(timezone.utc).isoformat(), "suspended_reason": body.reason}},
+    )
+    return {"ok": True, "suspended": True}
+
+@api_router.post("/admin/users/{user_id}/downgrade")
+async def admin_downgrade_user(user_id: str, admin: dict = Depends(get_current_admin(("owner", "operations")))):
+    """Set user plan to free (e.g. for chargeback)."""
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.users.update_one({"id": user_id}, {"$set": {"plan": "free"}})
+    return {"ok": True, "plan": "free"}
+
+@api_router.get("/admin/users/{user_id}/export")
+async def admin_export_user(user_id: str, admin: dict = Depends(get_current_admin(("owner", "operations")))):
+    """GDPR: export user data (profile + ledger summary + project ids)."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.pop("password", None)
+    ledger = await db.token_ledger.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
+    project_ids = await db.projects.find({"user_id": user_id}, {"id": 1}).to_list(1000)
+    return {
+        "user": {k: v for k, v in user.items() if k != "password"},
+        "ledger_entries": ledger,
+        "project_ids": [p["id"] for p in project_ids],
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+@api_router.get("/admin/billing/transactions")
+async def admin_billing_transactions(
+    limit: int = 100,
+    admin: dict = Depends(get_current_admin(("owner", "operations"))),
+):
+    """List purchases (who paid, when, amount, status) from ledger."""
+    rows = await db.token_ledger.find(
+        {"type": "purchase"},
+        {"_id": 0, "user_id": 1, "bundle": 1, "price": 1, "credits": 1, "created_at": 1, "stripe_session_id": 1},
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    for r in rows:
+        if r.get("price") is None:
+            r["price"] = TOKEN_BUNDLES.get(r.get("bundle", ""), {}).get("price", 0)
+    return {"transactions": rows}
+
+@api_router.get("/admin/fraud/flags")
+async def admin_fraud_flags(admin: dict = Depends(get_current_admin(("owner", "operations")))):
+    """Stub: high-risk accounts. Later: same IP > N signups, device clustering."""
+    return {"flags": [], "message": "Fraud flags from IP/device clustering to be implemented"}
+
+@api_router.get("/admin/referrals/links")
+async def admin_referral_links(admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
+    """All referral codes with use count."""
+    if not hasattr(db, "referral_codes"):
+        return {"links": []}
+    codes = await db.referral_codes.find({}, {"_id": 0}).to_list(500)
+    out = []
+    for c in codes:
+        use_count = await db.referrals.count_documents({"referrer_id": c.get("user_id")})
+        out.append({"user_id": c.get("user_id"), "code": c.get("code"), "use_count": use_count})
+    return {"links": out}
+
+@api_router.get("/admin/referrals/leaderboard")
+async def admin_referrals_leaderboard(limit: int = 100, admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
+    pipeline = [
+        {"$group": {"_id": "$referrer_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    if not hasattr(db, "referrals"):
+        return {"leaderboard": []}
+    cursor = db.referrals.aggregate(pipeline)
+    leaderboard = await cursor.to_list(length=limit)
+    return {"leaderboard": [{"referrer_id": x["_id"], "referral_count": x["count"]} for x in leaderboard]}
+
+
+@api_router.get("/admin/segments")
+async def admin_segments(
+    plan: Optional[str] = None,
+    limit: int = 500,
+    format: Optional[str] = None,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """Export user segment: filter by plan (free|starter|builder|pro|agency). Returns list of users; ?format=csv returns CSV."""
+    q = {}
+    if plan:
+        q["plan"] = plan
+    cursor = db.users.find(q, {"_id": 0, "id": 1, "email": 1, "plan": 1, "created_at": 1, "credit_balance": 1}).sort("created_at", -1).limit(limit)
+    users = await cursor.to_list(length=limit)
+    if format == "csv":
+        import io
+        buf = io.StringIO()
+        buf.write("id,email,plan,created_at,credit_balance\n")
+        for u in users:
+            buf.write(f"{u.get('id', '')},{u.get('email', '')},{u.get('plan', '')},{u.get('created_at', '')},{u.get('credit_balance', '')}\n")
+        return Response(content=buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=admin-segments.csv"})
+    return {"segment": users, "count": len(users)}
+
+
+@api_router.get("/admin/segments")
+async def admin_segments(
+    plan: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    limit: int = 500,
+    format: Optional[str] = None,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """Export user segment: filter by plan, signup date range. ?format=csv for CSV download."""
+    q = {}
+    if plan:
+        q["plan"] = plan
+    if from_date or to_date:
+        q["created_at"] = {}
+        if from_date:
+            q["created_at"]["$gte"] = _parse_date(from_date).isoformat()
+        if to_date:
+            end = _parse_date(to_date)
+            q["created_at"]["$lte"] = (end.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
+    cursor = db.users.find(q, {"_id": 0, "id": 1, "email": 1, "plan": 1, "credit_balance": 1, "created_at": 1}).sort("created_at", -1).limit(limit)
+    users = await cursor.to_list(length=limit)
+    if format == "csv":
+        import io
+        buf = io.StringIO()
+        buf.write("id,email,plan,credit_balance,created_at\n")
+        for u in users:
+            buf.write(f"{u.get('id', '')},{u.get('email', '')},{u.get('plan', '')},{u.get('credit_balance', '')},{u.get('created_at', '')}\n")
+        return Response(content=buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=admin-segment.csv"})
+    return {"segment": users, "count": len(users)}
+
+
 # ==================== DASHBOARD STATS ====================
 
 @api_router.get("/dashboard/stats")
@@ -2307,7 +3046,8 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         "total_projects": total_projects,
         "completed_projects": completed_projects,
         "running_projects": running_projects,
-        "token_balance": user["token_balance"],
+        "credit_balance": _user_credits(user),
+        "token_balance": _user_credits(user) * CREDITS_PER_TOKEN,
         "total_tokens_used": total_tokens_used,
         "weekly_data": weekly_data,
         "plan": user.get("plan", "free")
