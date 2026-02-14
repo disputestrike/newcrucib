@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, Component } from "react";
+import { useState, useEffect, useRef, createContext, useContext, Component } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
@@ -45,7 +45,12 @@ import ShortcutCheatsheet from "./pages/ShortcutCheatsheet";
 import PaymentsWizard from "./pages/PaymentsWizard";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import Aup from "./pages/Aup";
+import Dmca from "./pages/Dmca";
+import Cookies from "./pages/Cookies";
+import About from "./pages/About";
 import Pricing from "./pages/Pricing";
+import Enterprise from "./pages/Enterprise";
 import Features from "./pages/Features";
 import TemplatesPublic from "./pages/TemplatesPublic";
 import PatternsPublic from "./pages/PatternsPublic";
@@ -54,6 +59,13 @@ import ShortcutsPublic from "./pages/ShortcutsPublic";
 import PromptsPublic from "./pages/PromptsPublic";
 import Benchmarks from "./pages/Benchmarks";
 import GenerateContent from "./pages/GenerateContent";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminUsers from "./pages/AdminUsers";
+import AdminUserProfile from "./pages/AdminUserProfile";
+import AdminBilling from "./pages/AdminBilling";
+import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminLegal from "./pages/AdminLegal";
+import AuditLog from "./pages/AuditLog";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 export const API = `${BACKEND_URL}/api`;
@@ -88,6 +100,17 @@ const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const res = await axios.post(`${API}/auth/login`, { email, password });
+    if (res.data.status === "mfa_required" && res.data.mfa_token) {
+      return res.data;
+    }
+    localStorage.setItem("token", res.data.token);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
+  const verifyMfa = async (code, mfaToken) => {
+    const res = await axios.post(`${API}/auth/verify-mfa`, { code, mfa_token: mfaToken });
     localStorage.setItem("token", res.data.token);
     setToken(res.data.token);
     setUser(res.data.user);
@@ -130,7 +153,7 @@ const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading, refreshUser, loginWithToken }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading, refreshUser, loginWithToken, verifyMfa }}>
       {children}
     </AuthContext.Provider>
   );
@@ -159,11 +182,51 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// Admin route: require admin_role or redirect to app
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
+  if (!user.admin_role) return <Navigate to="/app" replace />;
+  return children;
+};
+
+// On route change: scroll to top so new page starts at top. When URL has a hash, scroll to that section so "go to" links land in the right place.
+function ScrollToPlace() {
+  const { pathname, hash } = useLocation();
+  const prevPathRef = useRef(pathname);
+  useEffect(() => {
+    if (pathname !== prevPathRef.current) {
+      prevPathRef.current = pathname;
+      window.scrollTo(0, 0);
+    }
+    if (hash) {
+      const id = hash.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        const t = setTimeout(() => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [pathname, hash]);
+  return null;
+}
+
 function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
+        <ScrollToPlace />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
@@ -172,7 +235,12 @@ function App() {
           <Route path="/share/:token" element={<ShareView />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/aup" element={<Aup />} />
+          <Route path="/dmca" element={<Dmca />} />
+          <Route path="/cookies" element={<Cookies />} />
+          <Route path="/about" element={<About />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/enterprise" element={<Enterprise />} />
           <Route path="/features" element={<Features />} />
           <Route path="/templates" element={<TemplatesPublic />} />
           <Route path="/patterns" element={<PatternsPublic />} />
@@ -198,6 +266,13 @@ function App() {
             <Route path="examples" element={<ExamplesGallery />} />
             <Route path="generate" element={<GenerateContent />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="audit-log" element={<AuditLog />} />
+            <Route path="admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+            <Route path="admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+            <Route path="admin/users/:id" element={<AdminRoute><AdminUserProfile /></AdminRoute>} />
+            <Route path="admin/billing" element={<AdminRoute><AdminBilling /></AdminRoute>} />
+            <Route path="admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
+            <Route path="admin/legal" element={<AdminRoute><AdminLegal /></AdminRoute>} />
           </Route>
         </Routes>
         </BrowserRouter>

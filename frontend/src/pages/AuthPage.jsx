@@ -7,13 +7,15 @@ import { useAuth, API } from '../App';
 const AuthPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, register, user, loginWithToken } = useAuth();
+  const { login, register, user, loginWithToken, verifyMfa } = useAuth();
   
   const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'register');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [mfaPending, setMfaPending] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -46,7 +48,12 @@ const AuthPage = () => {
     
     try {
       if (isLogin) {
-        await login(formData.email, formData.password);
+        const data = await login(formData.email, formData.password);
+        if (data.status === 'mfa_required' && data.mfa_token) {
+          setMfaPending(data.mfa_token);
+          setLoading(false);
+          return;
+        }
       } else {
         await register(formData.email, formData.password, formData.name);
       }
@@ -59,10 +66,27 @@ const AuthPage = () => {
     }
   };
 
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await verifyMfa(mfaCode.replace(/\D/g, '').slice(0, 6), mfaPending);
+      setMfaPending(null);
+      setMfaCode('');
+      const redirect = searchParams.get('redirect');
+      navigate(redirect && redirect.startsWith('/') ? redirect : '/app');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const benefits = [
     'Build full-stack apps in minutes',
-    'Multi-model AI (GPT-4o, Claude, Gemini)',
-    '50,000 free tokens to start',
+    'Plan-first build with 20 AI agents',
+    '50 free credits to start',
     'No credit card required'
   ];
 
@@ -128,10 +152,10 @@ const AuthPage = () => {
           
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-2 tracking-tight">
-              {isLogin ? 'Welcome back' : 'Create your account'}
+              {mfaPending ? 'Two-factor authentication' : isLogin ? 'Welcome back' : 'Create your account'}
             </h1>
             <p className="text-gray-600">
-              {isLogin ? 'Sign in to continue building' : 'Start building with 50K free tokens'}
+              {mfaPending ? 'Enter the 6-digit code from your authenticator app' : isLogin ? 'Sign in to continue building' : 'Start building with 50K free tokens'}
             </p>
           </div>
           
@@ -141,6 +165,7 @@ const AuthPage = () => {
             </div>
           )}
 
+          {!mfaPending && (
           <button
             type="button"
             onClick={handleGoogleSignIn}
@@ -155,11 +180,46 @@ const AuthPage = () => {
             </svg>
             Sign in with Google
           </button>
+          )}
+          {!mfaPending && (
           <div className="relative mb-5">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"/></div>
             <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500">or</span></div>
           </div>
+          )}
           
+          {mfaPending ? (
+            <form onSubmit={handleMfaSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700">Verification code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-center text-2xl tracking-[0.5em] font-mono"
+                  placeholder="000000"
+                  maxLength={6}
+                  autoFocus
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading || mfaCode.length !== 6}
+                className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-medium transition"
+              >
+                {loading ? <span className="inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Verify'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMfaPending(null); setMfaCode(''); setError(''); }}
+                className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm"
+              >
+                Back to sign in
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div>
@@ -219,6 +279,16 @@ const AuthPage = () => {
               </div>
             </div>
             
+            {!isLogin && (
+              <p className="text-xs text-gray-500 text-center">
+                By creating an account you agree to our{' '}
+                <Link to="/terms" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Terms</Link>
+                {' '}and{' '}
+                <Link to="/privacy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>
+                .
+              </p>
+            )}
+            
             <button
               type="submit"
               disabled={loading}
@@ -235,7 +305,9 @@ const AuthPage = () => {
               )}
             </button>
           </form>
+          )}
           
+          {!mfaPending && (
           <p className="mt-8 text-center text-gray-600">
             {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
             <button
@@ -246,6 +318,7 @@ const AuthPage = () => {
               {isLogin ? 'Sign up' : 'Sign in'}
             </button>
           </p>
+          )}
         </motion.div>
       </div>
     </div>

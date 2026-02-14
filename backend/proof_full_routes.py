@@ -241,6 +241,7 @@ def main():
         ("agents/run/memory-list", f"{BASE}/agents/run/memory-list", "get", None),
         ("agents/run/export-pdf", f"{BASE}/agents/run/export-pdf", "post", {"title": "T", "content": "C"}),
         ("agents/run/export-excel", f"{BASE}/agents/run/export-excel", "post", {"title": "T", "rows": []}),
+        ("agents/run/export-markdown", f"{BASE}/agents/run/export-markdown", "post", {"title": "T", "content": "C"}),
         ("agents/run/scrape", f"{BASE}/agents/run/scrape", "post", {"url": "https://example.com"}),
         ("agents/run/automation", f"{BASE}/agents/run/automation", "post", {"name": "p", "prompt": "x"}),
         ("agents/run/automation-list", f"{BASE}/agents/run/automation-list", "get", None),

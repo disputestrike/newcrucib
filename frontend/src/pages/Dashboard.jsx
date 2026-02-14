@@ -259,7 +259,13 @@ const Dashboard = () => {
                     <p className="font-medium truncate">{project.name}</p>
                     <p className="text-sm text-gray-500">{project.project_type} • {project.tokens_used?.toLocaleString()} tokens used</p>
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 flex items-center gap-2">
+                    {project.status === 'completed' && project.quality_score?.overall_score != null && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-700 text-slate-200 text-xs font-medium" title="Code quality score">
+                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-emerald-500/30 text-emerald-300">{Math.round(project.quality_score.overall_score)}</span>
+                        Quality
+                      </span>
+                    )}
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       project.status === 'completed' ? 'bg-green-500/20 text-green-400' :
                       project.status === 'running' ? 'bg-blue-500/20 text-blue-400' :

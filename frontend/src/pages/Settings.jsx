@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, Mail, Lock, Bell, Shield, CreditCard, 
-  Moon, Sun, Save, Check, Key, ExternalLink, Zap, HelpCircle, FileText, BarChart3, Settings as SettingsIcon
+  Moon, Sun, Save, Check, Key, ExternalLink, Zap, HelpCircle, FileText, BarChart3, Settings as SettingsIcon, Rocket, Copy, AlertCircle
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth, API } from '../App';
 import axios from 'axios';
 
@@ -12,13 +12,27 @@ const STORAGE_THEME = 'crucibai-theme';
 
 const Settings = () => {
   const { user, token } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.openTab || 'profile');
   const [saved, setSaved] = useState(false);
   const [env, setEnv] = useState({});
   const [envSaving, setEnvSaving] = useState(false);
   const [envSaved, setEnvSaved] = useState(false);
+  const [deployTokens, setDeployTokens] = useState({ vercel: '', netlify: '' });
+  const [deployTokensStatus, setDeployTokensStatus] = useState({ has_vercel: false, has_netlify: false });
+  const [deploySaving, setDeploySaving] = useState(false);
+  const [deploySaved, setDeploySaved] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem(STORAGE_THEME) || 'system');
   const [language, setLanguage] = useState('en');
+  const [mfaStatus, setMfaStatus] = useState(false);
+  const [mfaSetupStep, setMfaSetupStep] = useState(null);
+  const [mfaQrCode, setMfaQrCode] = useState(null);
+  const [mfaSecret, setMfaSecret] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaBackupCodes, setMfaBackupCodes] = useState([]);
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaError, setMfaError] = useState(null);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -51,12 +65,82 @@ const Settings = () => {
   };
 
   useEffect(() => {
+    if (location.state?.openTab) setActiveTab(location.state.openTab);
+  }, [location.state?.openTab]);
+
+  useEffect(() => {
     if (token) {
       axios.get(`${API}/workspace/env`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => setEnv(r.data.env || {}))
         .catch(() => {});
     }
   }, [token]);
+
+  useEffect(() => {
+    if (token && activeTab === 'deploy') {
+      axios.get(`${API}/users/me/deploy-tokens`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => setDeployTokensStatus(r.data))
+        .catch(() => {});
+    }
+  }, [token, activeTab]);
+
+  useEffect(() => {
+    if (token && activeTab === 'security') {
+      axios.get(`${API}/mfa/status`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => setMfaStatus(r.data.mfa_enabled))
+        .catch(() => {});
+    }
+  }, [token, activeTab]);
+
+  const handleMfaSetupStart = async () => {
+    setMfaError(null);
+    setMfaLoading(true);
+    try {
+      const r = await axios.post(`${API}/mfa/setup`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setMfaQrCode(r.data.qr_code);
+      setMfaSecret(r.data.secret);
+      setMfaSetupStep('qr');
+    } catch (e) {
+      setMfaError(e.response?.data?.detail || 'Failed to setup MFA');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaVerify = async () => {
+    if (mfaCode.length !== 6) {
+      setMfaError('Enter 6 digits');
+      return;
+    }
+    setMfaError(null);
+    setMfaLoading(true);
+    try {
+      const r = await axios.post(`${API}/mfa/verify`, { token: mfaCode }, { headers: { Authorization: `Bearer ${token}` } });
+      setMfaBackupCodes(r.data.backup_codes || []);
+      setMfaSetupStep('done');
+      setMfaStatus(true);
+      setMfaCode('');
+    } catch (e) {
+      setMfaError(e.response?.data?.detail || 'Invalid code');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaDisable = async () => {
+    setMfaError(null);
+    setMfaLoading(true);
+    try {
+      await axios.post(`${API}/mfa/disable`, { password: mfaDisablePassword }, { headers: { Authorization: `Bearer ${token}` } });
+      setMfaStatus(false);
+      setMfaSetupStep(null);
+      setMfaDisablePassword('');
+    } catch (e) {
+      setMfaError(e.response?.data?.detail || 'Failed to disable');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
 
   const handleSaveEnv = async () => {
     setEnvSaving(true);
@@ -72,11 +156,35 @@ const Settings = () => {
     }
   };
 
+  const handleSaveDeployTokens = async () => {
+    const body = {};
+    if (deployTokens.vercel.trim()) body.vercel = deployTokens.vercel.trim();
+    if (deployTokens.netlify.trim()) body.netlify = deployTokens.netlify.trim();
+    if (Object.keys(body).length === 0) return;
+    setDeploySaving(true);
+    setDeploySaved(false);
+    try {
+      await axios.patch(`${API}/users/me/deploy-tokens`, body, { headers: { Authorization: `Bearer ${token}` } });
+      setDeploySaved(true);
+      setDeployTokensStatus(prev => ({
+        has_vercel: prev.has_vercel || !!body.vercel,
+        has_netlify: prev.has_netlify || !!body.netlify,
+      }));
+      setDeployTokens({ vercel: '', netlify: '' });
+      setTimeout(() => setDeploySaved(false), 3000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeploySaving(false);
+    }
+  };
+
   const sidebarNav = [
     { id: 'profile', name: 'Account', icon: User },
     { id: 'general', name: 'General', icon: SettingsIcon },
     { id: 'usage', name: 'Usage', icon: BarChart3 },
     { id: 'api', name: 'API & Environment', icon: Key },
+    { id: 'deploy', name: 'Deploy integrations', icon: Rocket },
     { id: 'notifications', name: 'Notifications', icon: Bell },
     { id: 'billing', name: 'Billing', icon: CreditCard },
     { id: 'security', name: 'Security', icon: Shield },
@@ -281,6 +389,50 @@ const Settings = () => {
         </motion.div>
       )}
 
+      {/* Deploy integrations Tab */}
+      {activeTab === 'deploy' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10"
+        >
+          <h3 className="text-lg font-semibold mb-2">One-click deploy</h3>
+          <p className="text-sm text-gray-500 mb-4">Add tokens to deploy directly to Vercel or Netlify without downloading a ZIP. Get tokens from Vercel (Account → Settings → Tokens) and Netlify (User settings → Applications → Personal access tokens).</p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Vercel token {deployTokensStatus.has_vercel && <span className="text-green-500 text-xs">(saved)</span>}</label>
+              <input
+                type="password"
+                value={deployTokens.vercel}
+                onChange={(e) => setDeployTokens(prev => ({ ...prev, vercel: e.target.value }))}
+                placeholder={deployTokensStatus.has_vercel ? "Leave blank to keep existing" : "Paste Vercel token"}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 outline-none transition"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Netlify token {deployTokensStatus.has_netlify && <span className="text-green-500 text-xs">(saved)</span>}</label>
+              <input
+                type="password"
+                value={deployTokens.netlify}
+                onChange={(e) => setDeployTokens(prev => ({ ...prev, netlify: e.target.value }))}
+                placeholder={deployTokensStatus.has_netlify ? "Leave blank to keep existing" : "Paste Netlify token"}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 outline-none transition"
+              />
+            </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={handleSaveDeployTokens}
+              disabled={deploySaving || (!deployTokens.vercel && !deployTokens.netlify)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium transition disabled:opacity-50"
+            >
+              {deploySaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {deploySaving ? 'Saving...' : deploySaved ? 'Saved!' : 'Save deploy tokens'}
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Profile Tab */}
       {activeTab === 'profile' && (
         <motion.div
@@ -393,7 +545,125 @@ const Settings = () => {
           className="p-6 bg-[#0a0a0a] rounded-xl border border-white/10"
         >
           <h3 className="text-lg font-semibold mb-6">Security Settings</h3>
-          
+
+          {/* Two-Factor Authentication */}
+          <div className="space-y-4 mb-8">
+            <h4 className="font-medium flex items-center gap-2">
+              <Shield className="w-5 h-5 text-blue-400" />
+              Two-Factor Authentication (2FA)
+            </h4>
+            {mfaError && (
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                <p className="text-red-400 text-sm">{mfaError}</p>
+              </div>
+            )}
+            {mfaStatus && !mfaSetupStep ? (
+              <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-green-400 font-medium mb-3">2FA is enabled</p>
+                <p className="text-sm text-gray-400 mb-4">Your account is protected with two-factor authentication.</p>
+                <button
+                  type="button"
+                  onClick={() => setMfaSetupStep('disable')}
+                  className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm transition"
+                >
+                  Disable 2FA
+                </button>
+              </div>
+            ) : mfaSetupStep === 'disable' ? (
+              <div className="p-4 bg-white/5 rounded-lg space-y-3">
+                <p className="text-sm text-gray-400">Enter your password to disable 2FA.</p>
+                <input
+                  type="password"
+                  value={mfaDisablePassword}
+                  onChange={(e) => setMfaDisablePassword(e.target.value)}
+                  placeholder="Password"
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500 outline-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleMfaDisable}
+                    disabled={mfaLoading || !mfaDisablePassword}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {mfaLoading ? 'Disabling...' : 'Disable 2FA'}
+                  </button>
+                  <button
+                    onClick={() => { setMfaSetupStep(null); setMfaDisablePassword(''); setMfaError(null); }}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : !mfaSetupStep ? (
+              <div className="p-4 bg-white/5 rounded-lg">
+                <p className="text-sm text-gray-400 mb-4">Add an extra layer of security with an authenticator app (Google Authenticator, Authy, etc.).</p>
+                <button
+                  type="button"
+                  onClick={handleMfaSetupStart}
+                  disabled={mfaLoading}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  {mfaLoading ? 'Setting up...' : 'Enable 2FA'}
+                </button>
+              </div>
+            ) : mfaSetupStep === 'qr' ? (
+              <div className="p-4 bg-white/5 rounded-lg space-y-4">
+                <p className="text-sm text-gray-400">Scan with your authenticator app, then enter the 6-digit code below.</p>
+                {mfaQrCode && <img src={mfaQrCode} alt="QR Code" className="w-48 h-48 border border-white/10 rounded p-2 bg-white" />}
+                {mfaSecret && (
+                  <div className="flex items-center gap-2 p-2 bg-black/30 rounded">
+                    <code className="text-sm font-mono text-gray-300 break-all flex-1">{mfaSecret}</code>
+                    <button type="button" onClick={() => navigator.clipboard.writeText(mfaSecret)} className="p-1 hover:bg-white/10 rounded"><Copy className="w-4 h-4" /></button>
+                  </div>
+                )}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  maxLength={6}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg font-mono text-center text-xl tracking-widest focus:border-blue-500 outline-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleMfaVerify}
+                    disabled={mfaLoading || mfaCode.length !== 6}
+                    className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium disabled:opacity-50"
+                  >
+                    {mfaLoading ? 'Verifying...' : 'Verify'}
+                  </button>
+                  <button
+                    onClick={() => { setMfaSetupStep(null); setMfaQrCode(null); setMfaSecret(null); setMfaCode(''); setMfaError(null); }}
+                    className="px-4 py-2 bg-white/10 rounded-lg text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : mfaSetupStep === 'done' ? (
+              <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg space-y-3">
+                <p className="text-green-400 font-medium">2FA enabled. Save these backup codes in a safe place.</p>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-auto">
+                  {mfaBackupCodes.map((c, i) => (
+                    <div key={i} className="flex items-center gap-1 px-2 py-1 bg-black/30 rounded font-mono text-sm">
+                      <span>{c}</span>
+                      <button type="button" onClick={() => navigator.clipboard.writeText(c)}><Copy className="w-3 h-3 text-gray-400" /></button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { setMfaSetupStep(null); setMfaBackupCodes([]); }}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-sm"
+                >
+                  Done
+                </button>
+              </div>
+            ) : null}
+          </div>
+
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium mb-2">Current Password</label>
@@ -406,7 +676,6 @@ const Settings = () => {
                 />
               </div>
             </div>
-            
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">New Password</label>
@@ -425,7 +694,6 @@ const Settings = () => {
                 />
               </div>
             </div>
-
             <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
               <h4 className="font-medium text-red-400 mb-2">Danger Zone</h4>
               <p className="text-sm text-gray-400 mb-4">Once you delete your account, there is no going back.</p>

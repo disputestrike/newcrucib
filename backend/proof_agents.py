@@ -130,7 +130,16 @@ def main():
     else:
         print(f"  FAIL Excel Export -> {r.status_code} (pip install openpyxl if 501)")
 
-    # 20. Scraping Agent
+    # 20. Markdown Export
+    total += 1
+    r = requests.post(f"{BASE}/agents/run/export-markdown", json={"title": "Proof", "content": "Optional Markdown export.\n- Item 1\n- Item 2"}, timeout=10)
+    if r.status_code == 200 and ("text/markdown" in (r.headers.get("content-type") or "") or "attachment" in (r.headers.get("content-disposition") or "")):
+        print("  OK   Markdown Export")
+        passed += 1
+    else:
+        print(f"  FAIL Markdown Export -> {r.status_code}")
+
+    # 21. Scraping Agent
     total += 1
     r = requests.post(f"{BASE}/agents/run/scrape", json={"url": "https://example.com"}, timeout=25)
     if ok("Scraping Agent", r): passed += 1
@@ -140,7 +149,7 @@ def main():
     r = requests.post(f"{BASE}/agents/run/automation", json={"name": "proof_task", "prompt": "Run build"}, timeout=10)
     if ok("Automation Agent (schedule)", r): passed += 1
 
-    # 22. Automation Agent - list
+    # 23. Automation Agent - list
     total += 1
     r = requests.get(f"{BASE}/agents/run/automation-list", timeout=10)
     if ok("Automation Agent (list)", r): passed += 1

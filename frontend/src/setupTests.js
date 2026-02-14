@@ -2,6 +2,7 @@
  * Jest setup for CrucibAI frontend (Enterprise Layer 2).
  * Used by CRA/craco test runner.
  */
+import '@testing-library/jest-dom';
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {

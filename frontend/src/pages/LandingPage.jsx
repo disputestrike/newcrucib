@@ -102,7 +102,9 @@ const LandingPage = () => {
         try {
           const res = await axios.post(`${API}/voice/transcribe`, formData, {
             headers: { ...headers },
-            timeout: 30000
+            timeout: 30000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           });
           const text = res.data?.text?.trim();
           if (text) {
@@ -117,7 +119,7 @@ const LandingPage = () => {
           setIsTranscribing(false);
         }
       };
-      recorder.start(200);
+      recorder.start(1000);
       mediaRecorderRef.current = { recorder, stream };
       setIsRecording(true);
     } catch (err) {
@@ -129,6 +131,9 @@ const LandingPage = () => {
   const stopVoiceRecording = () => {
     const ref = mediaRecorderRef.current;
     if (ref?.recorder?.state === 'recording') {
+      try {
+        ref.recorder.requestData();
+      } catch (_) {}
       ref.recorder.stop();
     }
     if (ref?.stream) {
@@ -214,18 +219,19 @@ const LandingPage = () => {
   ];
 
   const faqs = [
-    { q: 'What is CrucibAI?', a: 'CrucibAI is an AI-powered platform that turns your ideas into working applications. Describe what you need in plain language, and we generate production-ready code with plan-first flow and 20 specialized agents.' },
-    { q: 'Is CrucibAI free to use?', a: 'Yes. We offer a free tier with credits so you can try building. Paid token bundles (Starter, Pro, Professional, Enterprise, Unlimited) unlock more capacity and optional Swarm mode. No expiry—tokens stay until you use them.' },
+    { q: 'What is CrucibAI?', a: 'CrucibAI is an AI-powered platform that turns your ideas into working applications. Describe what you need in plain language, and we generate production-ready code with plan-first flow and 100 specialized agents.' },
+    { q: 'Is CrucibAI free to use?', a: 'Yes. We offer a free tier with 50 credits. Paid plans are monthly (Starter, Builder, Pro, Agency) with more credits per month; add-ons (Light, Dev) are one-time top-ups. Unused credits roll over.' },
     { q: 'Do I need coding experience?', a: 'No. Our platform is designed for everyone. Just describe your idea and our AI handles the technical implementation.' },
     { q: 'What can I build?', a: 'Websites, dashboards, task managers, onboarding portals, pricing pages, e-commerce stores, internal tools, and more. If you can describe it, we can build it.' },
     { q: 'What is design-to-code?', a: 'Upload a UI screenshot or mockup and CrucibAI generates structured, responsive code (HTML/CSS, React, Tailwind). Use the attach button on the landing or in the workspace.' },
-    { q: 'What are Quick, Plan, Agent, and Thinking modes?', a: 'Quick: fast single-shot generation, no plan step. Plan: we create a structured plan first, then build. Agent: full orchestration with 20 agents (planning, frontend, backend, tests, deploy). Thinking: step-by-step reasoning before code. Swarm runs selected agents in parallel for speed.' },
+    { q: 'What are Quick, Plan, Agent, and Thinking modes?', a: 'Quick: fast single-shot generation, no plan step. Plan: we create a structured plan first, then build. Agent: full orchestration with 100 agents (planning, frontend, backend, design, SEO, tests, deploy). Thinking: step-by-step reasoning before code. Swarm runs selected agents in parallel for speed.' },
     { q: 'How do I make changes?', a: 'Just ask in the chat. Say "make it dark mode", "add a sidebar", or "change the colors" and we update the code instantly.' },
     { q: 'How are apps deployed?', a: 'You export your code as a ZIP or push to GitHub. We give you the files; you deploy to Vercel, Netlify, or any host. You own the code.' },
     { q: 'Is my data secure?', a: 'Yes. We use industry-standard practices. Your API keys stay in your environment; we don’t store them. See our Privacy and Terms for details.' },
     { q: 'Do I own what I create?', a: 'Yes. All applications and code you generate belong to you. Use, modify, or sell them however you like.' },
     { q: 'What are the limitations?', a: 'Complex multi-page apps may need multiple iterations. Very large codebases are subject to model context limits. Offline use is not supported. We recommend verifying critical logic and running your own tests.' },
-    { q: 'What’s next for CrucibAI?', a: 'We’re expanding API access for developers, adding more structured outputs (README, API docs, FAQ schema), and improving Swarm and Thinking modes. See our roadmap in the footer.' }
+    { q: 'What’s next for CrucibAI?', a: 'We’re expanding API access for developers, adding more structured outputs (README, API docs, FAQ schema), and improving Swarm and Thinking modes. See our roadmap in the footer.' },
+    { q: 'Enterprise & compliance?', a: "We're working toward SOC 2 and enterprise-grade compliance. For Enterprise or custom plans, contact sales@crucibai.com." }
   ];
 
   const faqsExtra = [
@@ -241,7 +247,7 @@ const LandingPage = () => {
     { q: 'How do I get help or report a bug?', a: 'Use the Documentation and Support links in the footer. For bugs, include steps to reproduce and your environment (browser, OS).' },
     { q: 'Can I build mobile apps?', a: 'Currently we focus on web apps (React). Mobile and PWA support are on the roadmap.' },
     { q: 'What browsers are supported?', a: 'We recommend Chrome, Firefox, or Edge. Safari is supported; voice input may have limitations on some browsers.' },
-    { q: 'How does CrucibAI compare to Kimi?', a: 'Kimi excels at long-context chat and research. CrucibAI is built for app creation: plan-first builds, 20 agents, design-to-code, and one workspace from idea to export. Use CrucibAI when you want to ship software.' }
+    { q: 'How does CrucibAI compare to Kimi?', a: 'Kimi excels at long-context chat and research. CrucibAI is built for app creation: plan-first builds, 36 agents, design-to-code, and one workspace from idea to export. Use CrucibAI when you want to ship software.' }
   ];
   const allFaqs = [...faqs, ...faqsExtra];
 
@@ -252,7 +258,7 @@ const LandingPage = () => {
   ];
 
   const comparisonRows = [
-    { tool: 'CrucibAI', bestFor: 'Apps + plan-first + design-to-code', strongest: 'Plan-first build, 20 agents, Swarm, design-to-code', pick: 'You want one workspace to go from idea to shipped app with minimal setup' },
+    { tool: 'CrucibAI', bestFor: 'Apps + plan-first + design-to-code', strongest: 'Plan-first build, 100 agents, Swarm, design-to-code', pick: 'You want one workspace to go from idea to shipped app with minimal setup' },
     { tool: 'Kimi (Kimi.ai)', bestFor: 'Long-context chat, research', strongest: 'Very long context, summarization', pick: 'You need long-document Q&A or research; less focused on app building' },
     { tool: 'Cursor', bestFor: 'In-IDE coding', strongest: 'Composer, codebase context', pick: 'You code daily in an IDE and want AI inside the editor' },
     { tool: 'Manus / Bolt', bestFor: 'Agentic app building', strongest: 'Natural language to app', pick: 'You want a similar build-from-prompt experience' },
@@ -310,7 +316,7 @@ const LandingPage = () => {
       <section className="pt-32 pb-20 px-6">
         <div className="max-w-3xl mx-auto text-center">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-kimi-text text-sm font-medium mb-6">
-            <span className="w-2 h-2 rounded-full bg-kimi-accent animate-pulse" /> NEW — Plan-first builds & Swarm mode
+            <span className="w-2 h-2 rounded-full bg-kimi-accent animate-pulse" /> NEW — 100 agents, Design/SEO flow & Swarm mode
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-kimi-hero font-bold tracking-tight text-kimi-text mb-6">
             Hello, Welcome to CrucibAI
@@ -506,16 +512,16 @@ const LandingPage = () => {
         </motion.div>
       </section>
 
-      {/* What is CrucibAI — Kimi-style */}
+      {/* What is CrucibAI — Clarity brand */}
       <section className="py-20 px-6">
         <div className="max-w-4xl mx-auto">
           <span className="text-xs uppercase tracking-wider text-kimi-muted">What we do</span>
           <h2 className="text-kimi-section font-bold text-kimi-text mt-2 mb-6">What is CrucibAI?</h2>
           <p className="text-kimi-body text-kimi-secondary mb-6 leading-relaxed">
-            CrucibAI is an AI-powered platform that turns prompts into working applications. We use a plan-first flow: describe your idea, get a structured plan and suggestions, then generate production-ready code. Attach images for design-to-code. Iterate in chat. Export or push to GitHub—you own the code.
+            CrucibAI is an AI-powered platform that turns prompts into working applications. Know exactly what you're building: plan-first flow, structured plan and suggestions, then production-ready code. No surprises, no hidden limitations. We run on sustainable margins (e.g. 92% on paid)—we survive and keep improving, unlike VC-funded competitors.
           </p>
           <ul className="grid sm:grid-cols-2 gap-3 text-kimi-body text-kimi-muted">
-            {['Research & summarization (docs)', 'Coding & debugging', 'Multimodal (text + images + files)', 'Plan-first agentic workflow', 'Templates & patterns', '20 specialized agents (frontend, backend, tests, deploy)'].map((item, i) => (
+            {['Research & summarization (docs)', 'Coding & debugging', 'Multimodal (text + images + files)', 'Plan-first agentic workflow', 'Templates & patterns', '100 specialized agents (frontend, backend, tests, deploy)'].map((item, i) => (
               <li key={i} className="flex items-center gap-2"><span className="text-kimi-accent">•</span> {item}</li>
             ))}
           </ul>
@@ -532,7 +538,7 @@ const LandingPage = () => {
           <div className="md:w-3/5 space-y-6">
             {[
               { title: 'Plan-first build', desc: 'We create a structured plan (features, design, components) before writing code. Get suggestions and then build in one flow.' },
-              { title: '20 specialized agents', desc: 'Planning, frontend, backend, tests, security, deployment—each step powered by dedicated agents. Optional Swarm runs agents in parallel for speed.' },
+              { title: '100 specialized agents', desc: 'Planning, frontend, backend, tests, security, deployment—each step powered by dedicated agents. Optional Swarm runs agents in parallel for speed.' },
               { title: 'Design-to-code', desc: 'Upload a UI screenshot or mockup; we generate structured, responsive code (React, Tailwind).' },
               { title: 'Multimodal input', desc: 'Text, images, and files. Describe your idea or attach a design—we handle both.' },
               { title: 'Quick, Plan, Agent & Thinking modes', desc: 'Quick for fast single-shot generation; Plan for plan-then-build; Agent for full orchestration; Thinking for deeper step-by-step reasoning.' }
@@ -577,7 +583,7 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-3 gap-8">
             {[
               { step: '1', title: 'Plan first', desc: 'For bigger prompts we generate a structured plan (features, components, design) and optional suggestions before writing code. You see the plan, then we build.' },
-              { step: '2', title: '20 specialized agents', desc: 'Planning, frontend, backend, styling, testing, and deployment—each step handled by dedicated agents. Optional Swarm runs them in parallel.' },
+              { step: '2', title: '100 specialized agents', desc: 'Planning, frontend, backend, styling, testing, and deployment—each step handled by dedicated agents. Optional Swarm runs them in parallel.' },
               { step: '3', title: 'Design-to-code & iterate', desc: 'Attach a screenshot for pixel-accurate code. Use Quick, Plan, Agent, or Thinking mode. Iterate in chat and export when ready.' }
             ].map((item, i) => (
               <div key={i} className="text-center">
@@ -590,12 +596,12 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* See What CrucibAI Built — 10/10 real-world proof */}
+      {/* Live Examples — See What CrucibAI Built (10/10 proof) */}
       <section id="examples" className="py-20 px-6 bg-kimi-bg-elevated/50">
         <div className="max-w-5xl mx-auto">
-          <span className="text-xs uppercase tracking-wider text-kimi-muted">Proof</span>
+          <span className="text-xs uppercase tracking-wider text-kimi-muted">Live Examples</span>
           <h2 className="text-kimi-section font-bold text-kimi-text mt-2 mb-2">See What CrucibAI Built</h2>
-          <p className="text-kimi-muted mb-8">Real apps generated by our 20-agent orchestration. Fork any example to open it in your workspace.</p>
+          <p className="text-kimi-muted mb-8">Real apps generated by our 100-agent orchestration. Fork any example to open it in your workspace.</p>
           <div className="grid sm:grid-cols-3 gap-6">
             {liveExamples.length > 0 ? liveExamples.map((ex) => (
               <div key={ex.name} className="p-5 rounded-xl border border-white/10 bg-kimi-bg hover:border-white/20 transition">
@@ -812,7 +818,10 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             <div>
               <div className="text-lg font-semibold text-kimi-text mb-4">CrucibAI</div>
-              <p className="text-sm text-kimi-muted">Turn ideas into software. Plan, build, ship.</p>
+              <p className="text-sm text-kimi-muted mb-3">Turn ideas into software. Plan, build, ship.</p>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/about" className="text-kimi-muted hover:text-kimi-text transition">About us</Link></li>
+              </ul>
             </div>
             <div>
               <div className="text-xs text-kimi-muted uppercase tracking-wider mb-4">Product</div>
@@ -837,6 +846,9 @@ const LandingPage = () => {
               <ul className="space-y-3 text-sm">
                 <li><Link to="/privacy" className="text-kimi-muted hover:text-kimi-text transition">Privacy</Link></li>
                 <li><Link to="/terms" className="text-kimi-muted hover:text-kimi-text transition">Terms</Link></li>
+                <li><Link to="/aup" className="text-kimi-muted hover:text-kimi-text transition">Acceptable Use</Link></li>
+                <li><Link to="/dmca" className="text-kimi-muted hover:text-kimi-text transition">DMCA</Link></li>
+                <li><Link to="/cookies" className="text-kimi-muted hover:text-kimi-text transition">Cookies</Link></li>
               </ul>
             </div>
           </div>

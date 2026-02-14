@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks, File, UploadFile, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks, File, UploadFile, Form, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, Response, RedirectResponse
 from dotenv import load_dotenv
@@ -25,6 +25,27 @@ from urllib.parse import quote, urlencode
 from agent_dag import AGENT_DAG, get_execution_phases, build_context_from_previous_agents, get_system_prompt_for_agent
 from agent_resilience import AgentError, get_criticality, get_timeout, generate_fallback
 from code_quality import score_generated_code
+try:
+    from agents.image_generator import generate_images_for_app, parse_image_prompts
+    from agents.video_generator import generate_videos_for_app, parse_video_queries
+except ImportError:
+    generate_images_for_app = parse_image_prompts = None
+    generate_videos_for_app = parse_video_queries = None
+try:
+    from agents.legal_compliance import check_request as legal_check_request
+except ImportError:
+    legal_check_request = None
+try:
+    from utils.audit_log import AuditLogger
+    from utils.rbac import has_permission, Permission, get_user_role
+except ImportError:
+    AuditLogger = None
+    has_permission = lambda u, p: True
+    Permission = None
+    get_user_role = lambda u: "owner"
+import hashlib
+import pyotp
+import qrcode
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -32,6 +53,19 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+audit_logger = AuditLogger(db) if AuditLogger else None
+
+def _mfa_temp_token_payload(user_id: str) -> dict:
+    return {"user_id": user_id, "purpose": "mfa_verification", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}
+
+def create_mfa_temp_token(user_id: str) -> str:
+    return jwt.encode(_mfa_temp_token_payload(user_id), JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def decode_mfa_temp_token(token: str) -> dict:
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    if payload.get("purpose") != "mfa_verification":
+        raise jwt.InvalidTokenError("Invalid purpose")
+    return payload
 
 app = FastAPI(title="CrucibAI Platform")
 api_router = APIRouter(prefix="/api")
@@ -106,6 +140,17 @@ class RAGQuery(BaseModel):
 class SearchQuery(BaseModel):
     query: str
     search_type: str = "hybrid"  # vector, keyword, hybrid
+
+class DeployTokensUpdate(BaseModel):
+    """Optional deploy tokens for one-click deploy (stored per user, not returned in /auth/me)."""
+    vercel: Optional[str] = None
+    netlify: Optional[str] = None
+
+
+class DeployOneClickBody(BaseModel):
+    """Optional token override for one-click deploy (otherwise use stored user tokens)."""
+    token: Optional[str] = None
+
 
 class ExportFilesBody(BaseModel):
     """Files to export as ZIP: filename -> code content"""
@@ -195,6 +240,10 @@ class AgentExportPdfBody(BaseModel):
     title: str
     content: str
 
+class AgentExportMarkdownBody(BaseModel):
+    title: str
+    content: str
+
 class AgentExportExcelBody(BaseModel):
     title: str
     rows: List[Dict[str, Any]] = []  # list of dicts, keys = column headers
@@ -202,6 +251,11 @@ class AgentExportExcelBody(BaseModel):
 class AgentMemoryBody(BaseModel):
     name: str
     content: str
+
+class AgentGenericRunBody(BaseModel):
+    """Run any agent by name (for 100-agent roster)."""
+    agent_name: str
+    prompt: str
 
 class AgentAutomationBody(BaseModel):
     name: str
@@ -266,8 +320,88 @@ AGENT_DEFINITIONS = [
     {"name": "Memory Agent", "layer": "deployment", "description": "Stores patterns for reuse", "avg_tokens": 25000},
     {"name": "PDF Export", "layer": "export", "description": "Generates formatted PDF reports", "avg_tokens": 30000},
     {"name": "Excel Export", "layer": "export", "description": "Creates spreadsheets with formulas", "avg_tokens": 25000},
+    {"name": "Markdown Export", "layer": "export", "description": "Outputs project summary in Markdown", "avg_tokens": 20000},
     {"name": "Scraping Agent", "layer": "automation", "description": "Extracts data from websites", "avg_tokens": 35000},
-    {"name": "Automation Agent", "layer": "automation", "description": "Schedules tasks and workflows", "avg_tokens": 30000}
+    {"name": "Automation Agent", "layer": "automation", "description": "Schedules tasks and workflows", "avg_tokens": 30000},
+    {"name": "Video Generation", "layer": "execution", "description": "Stock video search queries", "avg_tokens": 20000},
+    {"name": "Design Agent", "layer": "execution", "description": "Image placement spec (hero, feature_1, feature_2)", "avg_tokens": 30000},
+    {"name": "Layout Agent", "layer": "execution", "description": "Injects image placeholders into frontend", "avg_tokens": 40000},
+    {"name": "SEO Agent", "layer": "execution", "description": "Meta, OG, schema, sitemap, robots.txt", "avg_tokens": 35000},
+    {"name": "Content Agent", "layer": "planning", "description": "Landing copy: hero, features, CTA", "avg_tokens": 30000},
+    {"name": "Brand Agent", "layer": "execution", "description": "Colors, fonts, tone spec", "avg_tokens": 25000},
+    {"name": "Documentation Agent", "layer": "deployment", "description": "README: setup, env, run, deploy", "avg_tokens": 40000},
+    {"name": "Validation Agent", "layer": "validation", "description": "Form/API validation rules, Zod/Yup", "avg_tokens": 35000},
+    {"name": "Auth Setup Agent", "layer": "execution", "description": "JWT/OAuth flow, protected routes", "avg_tokens": 50000},
+    {"name": "Payment Setup Agent", "layer": "execution", "description": "Stripe checkout, webhooks", "avg_tokens": 50000},
+    {"name": "Monitoring Agent", "layer": "deployment", "description": "Sentry, analytics setup", "avg_tokens": 35000},
+    {"name": "Accessibility Agent", "layer": "validation", "description": "a11y improvements: ARIA, contrast", "avg_tokens": 30000},
+    {"name": "DevOps Agent", "layer": "deployment", "description": "CI/CD, Dockerfile", "avg_tokens": 40000},
+    {"name": "Webhook Agent", "layer": "execution", "description": "Webhook endpoint design", "avg_tokens": 35000},
+    {"name": "Email Agent", "layer": "execution", "description": "Transactional email setup", "avg_tokens": 35000},
+    {"name": "Legal Compliance Agent", "layer": "planning", "description": "GDPR/CCPA hints", "avg_tokens": 30000},
+    {"name": "GraphQL Agent", "layer": "execution", "description": "GraphQL schema and resolvers", "avg_tokens": 40000},
+    {"name": "WebSocket Agent", "layer": "execution", "description": "Real-time subscriptions", "avg_tokens": 35000},
+    {"name": "i18n Agent", "layer": "execution", "description": "Localization, translation keys", "avg_tokens": 30000},
+    {"name": "Caching Agent", "layer": "execution", "description": "Redis/edge caching strategy", "avg_tokens": 30000},
+    {"name": "Rate Limit Agent", "layer": "execution", "description": "API rate limiting, quotas", "avg_tokens": 30000},
+    {"name": "Search Agent", "layer": "execution", "description": "Full-text search (Algolia/Meilisearch)", "avg_tokens": 35000},
+    {"name": "Analytics Agent", "layer": "deployment", "description": "GA4, Mixpanel, event schema", "avg_tokens": 30000},
+    {"name": "API Documentation Agent", "layer": "execution", "description": "OpenAPI/Swagger from routes", "avg_tokens": 40000},
+    {"name": "Mobile Responsive Agent", "layer": "validation", "description": "Breakpoints, touch, PWA hints", "avg_tokens": 30000},
+    {"name": "Migration Agent", "layer": "execution", "description": "DB migration scripts", "avg_tokens": 35000},
+    {"name": "Backup Agent", "layer": "deployment", "description": "Backup strategy, restore steps", "avg_tokens": 30000},
+    {"name": "Notification Agent", "layer": "execution", "description": "Push, in-app, email notifications", "avg_tokens": 35000},
+    {"name": "Design Iteration Agent", "layer": "planning", "description": "Feedback → spec → rebuild flow", "avg_tokens": 35000},
+    {"name": "Code Review Agent", "layer": "validation", "description": "Security, style, best-practice review", "avg_tokens": 45000},
+    {"name": "Staging Agent", "layer": "deployment", "description": "Staging env, preview URLs", "avg_tokens": 25000},
+    {"name": "A/B Test Agent", "layer": "execution", "description": "Experiment setup, variant routing", "avg_tokens": 30000},
+    {"name": "Feature Flag Agent", "layer": "execution", "description": "LaunchDarkly/Flagsmith wiring", "avg_tokens": 30000},
+    {"name": "Error Boundary Agent", "layer": "execution", "description": "React error boundaries, fallback UI", "avg_tokens": 30000},
+    {"name": "Logging Agent", "layer": "execution", "description": "Structured logs, log levels", "avg_tokens": 30000},
+    {"name": "Metrics Agent", "layer": "deployment", "description": "Prometheus/Datadog metrics", "avg_tokens": 30000},
+    {"name": "Audit Trail Agent", "layer": "execution", "description": "User action logging, audit log", "avg_tokens": 35000},
+    {"name": "Session Agent", "layer": "execution", "description": "Session storage, expiry, refresh", "avg_tokens": 30000},
+    {"name": "OAuth Provider Agent", "layer": "execution", "description": "Google/GitHub OAuth wiring", "avg_tokens": 40000},
+    {"name": "2FA Agent", "layer": "execution", "description": "TOTP, backup codes", "avg_tokens": 30000},
+    {"name": "Stripe Subscription Agent", "layer": "execution", "description": "Plans, metering, downgrade", "avg_tokens": 40000},
+    {"name": "Invoice Agent", "layer": "execution", "description": "Invoice generation, PDF", "avg_tokens": 35000},
+    {"name": "CDN Agent", "layer": "deployment", "description": "Static assets, cache headers", "avg_tokens": 30000},
+    {"name": "SSR Agent", "layer": "execution", "description": "Next.js SSR/SSG hints", "avg_tokens": 30000},
+    {"name": "Bundle Analyzer Agent", "layer": "validation", "description": "Code splitting, chunk hints", "avg_tokens": 30000},
+    {"name": "Lighthouse Agent", "layer": "validation", "description": "Performance, a11y, SEO scores", "avg_tokens": 35000},
+    {"name": "Schema Validation Agent", "layer": "execution", "description": "Request/response validation", "avg_tokens": 30000},
+    {"name": "Mock API Agent", "layer": "execution", "description": "MSW, Mirage, mock server", "avg_tokens": 35000},
+    {"name": "E2E Agent", "layer": "execution", "description": "Playwright/Cypress scaffolding", "avg_tokens": 45000},
+    {"name": "Load Test Agent", "layer": "execution", "description": "k6, Artillery scripts", "avg_tokens": 35000},
+    {"name": "Dependency Audit Agent", "layer": "validation", "description": "npm audit, Snyk hints", "avg_tokens": 30000},
+    {"name": "License Agent", "layer": "planning", "description": "OSS license compliance", "avg_tokens": 25000},
+    {"name": "Terms Agent", "layer": "planning", "description": "Terms of service draft", "avg_tokens": 30000},
+    {"name": "Privacy Policy Agent", "layer": "planning", "description": "Privacy policy draft", "avg_tokens": 30000},
+    {"name": "Cookie Consent Agent", "layer": "execution", "description": "Cookie banner, preferences", "avg_tokens": 30000},
+    {"name": "Multi-tenant Agent", "layer": "execution", "description": "Tenant isolation, schema", "avg_tokens": 40000},
+    {"name": "RBAC Agent", "layer": "execution", "description": "Roles, permissions matrix", "avg_tokens": 40000},
+    {"name": "SSO Agent", "layer": "execution", "description": "SAML, enterprise SSO", "avg_tokens": 40000},
+    {"name": "Audit Export Agent", "layer": "deployment", "description": "Export audit logs", "avg_tokens": 30000},
+    {"name": "Data Residency Agent", "layer": "planning", "description": "Region, GDPR data location", "avg_tokens": 30000},
+    {"name": "HIPAA Agent", "layer": "planning", "description": "Healthcare compliance hints", "avg_tokens": 35000},
+    {"name": "SOC2 Agent", "layer": "planning", "description": "SOC2 control hints", "avg_tokens": 35000},
+    {"name": "Penetration Test Agent", "layer": "validation", "description": "Pentest checklist", "avg_tokens": 35000},
+    {"name": "Incident Response Agent", "layer": "deployment", "description": "Runbook, escalation", "avg_tokens": 35000},
+    {"name": "SLA Agent", "layer": "deployment", "description": "Uptime, latency targets", "avg_tokens": 30000},
+    {"name": "Cost Optimizer Agent", "layer": "deployment", "description": "Cloud cost hints", "avg_tokens": 30000},
+    {"name": "Accessibility WCAG Agent", "layer": "validation", "description": "WCAG 2.1 AA checklist", "avg_tokens": 35000},
+    {"name": "RTL Agent", "layer": "execution", "description": "Right-to-left layout", "avg_tokens": 25000},
+    {"name": "Dark Mode Agent", "layer": "execution", "description": "Theme toggle, contrast", "avg_tokens": 30000},
+    {"name": "Keyboard Nav Agent", "layer": "validation", "description": "Full keyboard navigation", "avg_tokens": 30000},
+    {"name": "Screen Reader Agent", "layer": "validation", "description": "Screen-reader-specific hints", "avg_tokens": 30000},
+    {"name": "Component Library Agent", "layer": "execution", "description": "Shadcn/Radix usage", "avg_tokens": 35000},
+    {"name": "Design System Agent", "layer": "execution", "description": "Tokens, spacing, typography", "avg_tokens": 35000},
+    {"name": "Animation Agent", "layer": "execution", "description": "Framer Motion, transitions", "avg_tokens": 30000},
+    {"name": "Chart Agent", "layer": "execution", "description": "Recharts, D3 usage", "avg_tokens": 35000},
+    {"name": "Table Agent", "layer": "execution", "description": "Data tables, sorting, pagination", "avg_tokens": 35000},
+    {"name": "Form Builder Agent", "layer": "execution", "description": "Dynamic form generation", "avg_tokens": 40000},
+    {"name": "Workflow Agent", "layer": "execution", "description": "State machine, workflows", "avg_tokens": 40000},
+    {"name": "Queue Agent", "layer": "execution", "description": "Job queues, Bull/Celery", "avg_tokens": 40000},
 ]
 
 # AI Model configurations for auto-selection (primary per task)
@@ -420,6 +554,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def require_permission(permission):
+    """RBAC: require permission or 403. Use only when permission is not None."""
+    async def _dep(user: dict = Depends(get_current_user)):
+        if permission is not None and not has_permission(user, permission):
+            raise HTTPException(status_code=403, detail="Insufficient permission")
+        return user
+    return _dep
 
 # Public API (E1): X-API-Key validated against env CRUCIBAI_PUBLIC_API_KEYS or db.api_keys
 PUBLIC_API_KEYS = set(k.strip() for k in (os.environ.get("CRUCIBAI_PUBLIC_API_KEYS") or "").split(",") if k.strip())
@@ -925,7 +1067,7 @@ async def transcribe_voice(
         if not audio_content or len(audio_content) < 100:
             raise HTTPException(status_code=400, detail="Audio file too short or empty.")
         ext = (audio.filename or "audio.webm").split(".")[-1].lower()
-        if ext not in ("webm", "mp3", "wav", "m4a", "mp4", "mpeg", "mpga"):
+        if ext not in ("webm", "mp3", "wav", "m4a", "mp4", "mpeg", "mpga", "ogg"):
             ext = "webm"
         suffix = f".{ext}"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
@@ -941,7 +1083,14 @@ async def transcribe_voice(
                     response_format="text",
                     language="en",
                 )
-            text = transcript if isinstance(transcript, str) else getattr(transcript, "text", str(transcript))
+            if isinstance(transcript, str):
+                text = transcript
+            elif hasattr(transcript, "text"):
+                text = transcript.text
+            elif isinstance(transcript, dict):
+                text = transcript.get("text", "")
+            else:
+                text = str(transcript or "")
             text = (text or "").strip()
             logger.info(f"Voice transcription ok: {text[:80]}...")
             return {"text": text, "language": "en", "model": "whisper-1"}
@@ -1317,7 +1466,7 @@ async def enterprise_contact(data: EnterpriseContact):
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
-async def register(data: UserRegister):
+async def register(data: UserRegister, request: Request):
     if _is_disposable_email(data.email):
         raise HTTPException(status_code=400, detail="Disposable email addresses are not allowed.")
     existing = await db.users.find_one({"email": data.email})
@@ -1333,6 +1482,9 @@ async def register(data: UserRegister):
         "token_balance": FREE_TIER_CREDITS * CREDITS_PER_TOKEN,
         "credit_balance": FREE_TIER_CREDITS,
         "plan": "free",
+        "role": "owner",
+        "mfa_enabled": False,
+        "mfa_secret": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)
@@ -1347,19 +1499,66 @@ async def register(data: UserRegister):
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     await _apply_referral_on_signup(user_id, getattr(data, "ref", None))
+    if audit_logger:
+        await audit_logger.log(user_id, "signup", ip_address=getattr(request.client, "host", None))
     
     token = create_token(user_id)
-    return {"token": token, "user": {k: v for k, v in user.items() if k != "password" and k != "_id"}}
+    return {"token": token, "user": {k: v for k, v in user.items() if k not in ("password", "_id")}}
 
 @api_router.post("/auth/login")
-async def login(data: UserLogin):
+async def login(data: UserLogin, request: Request):
     user = await db.users.find_one({"email": data.email}, {"_id": 0})
     if not user or not verify_password(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if len(user["password"]) == 64 and all(c in "0123456789abcdef" for c in user["password"].lower()):
         await db.users.update_one({"id": user["id"]}, {"$set": {"password": hash_password(data.password)}})
+    ip = getattr(request.client, "host", None)
+    if user.get("mfa_enabled") and user.get("mfa_secret"):
+        if audit_logger:
+            await audit_logger.log(user["id"], "login_password_verified", ip_address=ip)
+        mfa_token = create_mfa_temp_token(user["id"])
+        return {
+            "status": "mfa_required",
+            "mfa_required": True,
+            "mfa_token": mfa_token,
+            "message": "Enter 6-digit code from your authenticator app",
+        }
     token = create_token(user["id"])
+    if audit_logger:
+        await audit_logger.log(user["id"], "login", ip_address=ip)
     return {"token": token, "user": {k: v for k, v in user.items() if k != "password"}}
+
+class MFAVerifyLogin(BaseModel):
+    code: str
+    mfa_token: str
+
+@api_router.post("/auth/verify-mfa")
+async def verify_mfa_login(body: MFAVerifyLogin, request: Request):
+    try:
+        payload = decode_mfa_temp_token(body.mfa_token)
+        user_id = payload["user_id"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    user = await db.users.find_one({"id": user_id})
+    if not user or not user.get("mfa_enabled") or not user.get("mfa_secret"):
+        raise HTTPException(status_code=400, detail="MFA not enabled")
+    code = (body.code or "").strip().replace(" ", "")
+    verified = False
+    if pyotp.TOTP(user["mfa_secret"]).verify(code, valid_window=1):
+        verified = True
+    if not verified:
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        backup = await db.backup_codes.find_one({"user_id": user_id, "code_hash": code_hash, "used": False})
+        if backup:
+            await db.backup_codes.update_one({"_id": backup["_id"]}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc)}})
+            verified = True
+    if not verified:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    token = create_token(user_id)
+    if audit_logger:
+        await audit_logger.log(user_id, "login_mfa_verified", ip_address=getattr(request.client, "host", None))
+    u = {k: v for k, v in user.items() if k not in ("password", "mfa_secret", "_id")}
+    return {"token": token, "user": u}
 
 @api_router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
@@ -1371,7 +1570,135 @@ async def get_me(user: dict = Depends(get_current_user)):
     u["credit_balance"] = _user_credits(u)
     if u["id"] in ADMIN_USER_IDS and not u.get("admin_role"):
         u["admin_role"] = "owner"
-    return {k: v for k, v in u.items() if k != "password"}
+    u.pop("password", None)
+    u.pop("mfa_secret", None)
+    u.pop("deploy_tokens", None)
+    return u
+
+# ==================== MFA ROUTES ====================
+
+class MFAVerifyBody(BaseModel):
+    token: str  # 6-digit code
+
+class MFADisableBody(BaseModel):
+    password: str
+
+class BackupCodeBody(BaseModel):
+    code: str
+
+@api_router.post("/mfa/setup")
+async def mfa_setup(request: Request, user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"id": user["id"]}, {"mfa_enabled": 1, "mfa_secret": 1})
+    if u and u.get("mfa_enabled"):
+        raise HTTPException(status_code=400, detail="MFA already enabled")
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=user.get("email") or user["id"], issuer_name="CrucibAI")
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    await db.mfa_setup_temp.insert_one({
+        "user_id": user["id"],
+        "secret": secret,
+        "created_at": datetime.now(timezone.utc),
+        "verified": False,
+    })
+    if audit_logger:
+        await audit_logger.log(user["id"], "mfa_setup_started", ip_address=getattr(request.client, "host", None))
+    return {"status": "success", "qr_code": f"data:image/png;base64,{qr_b64}", "secret": secret}
+
+@api_router.post("/mfa/verify")
+async def mfa_verify(body: MFAVerifyBody, request: Request, user: dict = Depends(get_current_user)):
+    temp = await db.mfa_setup_temp.find_one({"user_id": user["id"], "verified": False})
+    if not temp:
+        raise HTTPException(status_code=400, detail="No MFA setup in progress")
+    code = (body.token or "").strip().replace(" ", "")
+    if not pyotp.TOTP(temp["secret"]).verify(code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Invalid code. Try again.")
+    backup_codes = ["".join(random.choices("0123456789abcdef", k=8)) for _ in range(10)]
+    for bc in backup_codes:
+        await db.backup_codes.insert_one({
+            "user_id": user["id"],
+            "code_hash": hashlib.sha256(bc.encode()).hexdigest(),
+            "used": False,
+            "created_at": datetime.now(timezone.utc),
+        })
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"mfa_enabled": True, "mfa_secret": temp["secret"], "mfa_enabled_at": datetime.now(timezone.utc)}}
+    )
+    await db.mfa_setup_temp.delete_many({"user_id": user["id"]})
+    if audit_logger:
+        await audit_logger.log(user["id"], "mfa_enabled", ip_address=getattr(request.client, "host", None))
+    return {"status": "success", "message": "MFA enabled", "backup_codes": backup_codes}
+
+@api_router.post("/mfa/disable")
+async def mfa_disable(body: MFADisableBody, request: Request, user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"id": user["id"]}, {"password": 1})
+    if not u or not verify_password(body.password, u["password"]):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"mfa_enabled": False, "mfa_secret": None}})
+    await db.backup_codes.delete_many({"user_id": user["id"]})
+    if audit_logger:
+        await audit_logger.log(user["id"], "mfa_disabled", ip_address=getattr(request.client, "host", None))
+    return {"status": "success", "message": "MFA disabled"}
+
+@api_router.get("/mfa/status")
+async def mfa_status(user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"id": user["id"]}, {"mfa_enabled": 1})
+    return {"mfa_enabled": u.get("mfa_enabled", False), "status": "enabled" if u.get("mfa_enabled") else "disabled"}
+
+@api_router.post("/mfa/backup-code/use")
+async def mfa_backup_code_use(body: BackupCodeBody, request: Request, user: dict = Depends(get_current_user)):
+    code_hash = hashlib.sha256((body.code or "").strip().encode()).hexdigest()
+    backup = await db.backup_codes.find_one({"user_id": user["id"], "code_hash": code_hash, "used": False})
+    if not backup:
+        raise HTTPException(status_code=400, detail="Invalid backup code")
+    await db.backup_codes.update_one({"_id": backup["_id"]}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc)}})
+    if audit_logger:
+        await audit_logger.log(user["id"], "backup_code_used", ip_address=getattr(request.client, "host", None))
+    return {"status": "success", "message": "Backup code accepted"}
+
+# ==================== AUDIT LOG ROUTES ====================
+
+@api_router.get("/audit/logs")
+async def get_audit_logs(
+    user: dict = Depends(get_current_user),
+    limit: int = Query(100, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    action: Optional[str] = None,
+):
+    """Get current user's audit logs."""
+    if not audit_logger:
+        return {"logs": [], "total": 0, "limit": limit, "skip": skip}
+    return await audit_logger.get_user_logs(user["id"], limit=limit, skip=skip, action_filter=action)
+
+@api_router.get("/audit/logs/export")
+async def export_audit_logs(
+    user: dict = Depends(get_current_user),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    format: str = Query("json", enum=["json", "csv"]),
+):
+    """Export audit logs for compliance (date format YYYY-MM-DD)."""
+    if not audit_logger:
+        raise HTTPException(status_code=503, detail="Audit log not available")
+    try:
+        start = datetime.strptime(start_date.strip()[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end = datetime.strptime(end_date.strip()[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format (use YYYY-MM-DD)")
+    if start > end:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+    result = await audit_logger.export_logs(user["id"], start, end, format=format)
+    if format == "json":
+        import json
+        return Response(content=result, media_type="application/json")
+    return Response(content=result, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=audit-log-{start_date}-{end_date}.csv"})
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
@@ -1527,12 +1854,24 @@ async def get_token_usage(user: dict = Depends(get_current_user)):
         by_project[project] = by_project.get(project, 0) + tokens
         total_used += tokens
     
+    # Daily trend (last 14 days) from token_usage
+    from collections import defaultdict
+    by_day: Dict[str, int] = defaultdict(int)
+    for u in usage:
+        created = u.get("created_at")
+        if created:
+            day = created[:10] if isinstance(created, str) else datetime.fromisoformat(created.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+            by_day[day] += u.get("tokens", 0)
+    sorted_days = sorted(by_day.keys(), reverse=True)[:14]
+    daily_trend = [{"date": d, "tokens": by_day[d]} for d in sorted_days]
+
     return {
         "total_used": total_used,
         "by_agent": by_agent,
         "by_project": by_project,
         "balance": _user_credits(user),
-        "credit_balance": _user_credits(user)
+        "credit_balance": _user_credits(user),
+        "daily_trend": daily_trend,
     }
 
 # ==================== REFERRAL ROUTES ====================
@@ -1858,12 +2197,175 @@ async def agent_automation_list(user: dict = Depends(get_optional_user)):
     items = await cursor.to_list(length=50)
     return {"agent": "Automation Agent", "items": items}
 
+# ---------- New agents (Design, SEO, Content, etc.) ----------
+
+@api_router.post("/agents/run/design")
+async def agent_design(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Design Agent: image placement spec (hero, feature_1, feature_2)."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Design Agent. Output ONLY a JSON object with keys: hero, feature_1, feature_2. Each value: { \"position\": \"top-full|sidebar|grid\", \"aspect\": \"16:9|1:1|4:3\", \"role\": \"hero|feature|testimonial\" }. No markdown."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Design Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/layout")
+async def agent_layout(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Layout Agent: inject image placeholders into frontend."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Layout Agent. Given frontend code and image specs, output updated React/JSX with image placeholders (img tags with data-image-slot) in correct positions. No markdown."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Layout Agent", "result": response, "code": (response or "").strip().removeprefix("```").removesuffix("```").strip(), "model_used": model_used}
+
+@api_router.post("/agents/run/seo")
+async def agent_seo(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """SEO Agent: meta tags, OG, schema, sitemap, robots."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are an SEO Agent. Output meta tags, Open Graph, Twitter Card, JSON-LD schema, sitemap hints, robots.txt rules. Plain text or JSON."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "SEO Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/content")
+async def agent_content(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Content Agent: landing copy (hero, features, CTA)."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Content Agent. Write landing page copy: hero headline, 3 feature blurbs (2 lines each), CTA text. Plain text, one section per line."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Content Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/brand")
+async def agent_brand(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Brand Agent: colors, fonts, tone."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Brand Agent. Output a JSON with: primary_color, secondary_color, font_heading, font_body, tone (e.g. professional, playful). No markdown."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Brand Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/documentation")
+async def agent_documentation(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Documentation Agent: README sections."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Documentation Agent. Output README sections: setup, env vars, run commands, deploy steps. Markdown."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Documentation Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/validation")
+async def agent_validation(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Validation Agent: form/API validation rules, Zod/Yup."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Validation Agent. List 3-5 form/API validation rules and suggest Zod/Yup schemas. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Validation Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/auth-setup")
+async def agent_auth_setup(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Auth Setup Agent: JWT/OAuth2 flow."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are an Auth Setup Agent. Suggest JWT/OAuth2 flow: login, logout, token refresh, protected routes. Code or step list."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Auth Setup Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/payment-setup")
+async def agent_payment_setup(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Payment Setup Agent: Stripe integration."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Payment Setup Agent. Suggest Stripe (or similar) integration: checkout, webhooks, subscription. Code or step list."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Payment Setup Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/monitoring")
+async def agent_monitoring(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Monitoring Agent: Sentry/analytics setup."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Monitoring Agent. Suggest Sentry/analytics setup: error tracking, performance, user events. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Monitoring Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/accessibility")
+async def agent_accessibility(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Accessibility Agent: a11y improvements."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are an Accessibility Agent. List 3-5 a11y improvements: ARIA, focus, contrast, screen reader. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Accessibility Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/devops")
+async def agent_devops(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """DevOps Agent: CI/CD, Dockerfile."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a DevOps Agent. Suggest CI/CD (GitHub Actions), Dockerfile, env config. Plain text or YAML."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "DevOps Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/webhook")
+async def agent_webhook(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Webhook Agent: webhook endpoint design."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Webhook Agent. Suggest webhook endpoint design: payload, signature verification, retries. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Webhook Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/email")
+async def agent_email(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Email Agent: transactional email setup."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are an Email Agent. Suggest transactional email setup: provider (Resend/SendGrid), templates, verification. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Email Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/legal-compliance")
+async def agent_legal_compliance(data: AgentPromptBody, user: dict = Depends(get_optional_user)):
+    """Legal Compliance Agent: GDPR/CCPA hints."""
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    system = "You are a Legal Compliance Agent. Suggest GDPR/CCPA items: cookie banner, privacy link, data retention. Plain text."
+    response, model_used = await _call_llm_with_fallback(message=data.prompt, system_message=system, session_id=str(uuid.uuid4()), model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective), api_keys=effective)
+    return {"agent": "Legal Compliance Agent", "result": response, "model_used": model_used}
+
+@api_router.post("/agents/run/generic")
+async def agent_run_generic(data: AgentGenericRunBody, user: dict = Depends(get_optional_user)):
+    """Run any agent by name (100-agent roster). Uses system prompt from agent DAG."""
+    if data.agent_name not in AGENT_DAG:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {data.agent_name}")
+    system = get_system_prompt_for_agent(data.agent_name)
+    if not system:
+        system = f"You are {data.agent_name}. Fulfill the user request. Output concise, actionable text or code as appropriate."
+    user_keys = await get_workspace_api_keys(user)
+    effective = _effective_api_keys(user_keys)
+    response, model_used = await _call_llm_with_fallback(
+        message=data.prompt,
+        system_message=system,
+        session_id=str(uuid.uuid4()),
+        model_chain=_get_model_chain("auto", data.prompt, effective_keys=effective),
+        api_keys=effective,
+    )
+    return {"agent": data.agent_name, "result": response, "model_used": model_used}
+
 # ==================== PROJECT ROUTES ====================
 
 FREE_TIER_MAX_PROJECTS = 3
 
 @api_router.post("/projects")
-async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+async def create_project(
+    data: ProjectCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    if Permission is not None and not has_permission(user, Permission.CREATE_PROJECT):
+        raise HTTPException(status_code=403, detail="Insufficient permission to create projects")
     plan = user.get("plan", "free")
     if plan == "free":
         count = await db.projects.count_documents({"user_id": user["id"]})
@@ -1879,7 +2381,27 @@ async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks,
     cred = _user_credits(user)
     if cred < estimated_credits:
         raise HTTPException(status_code=402, detail=f"Insufficient credits. Need {estimated_credits}, have {cred}. Buy more in Credit Center.")
-    
+
+    # Legal / AUP compliance: block prohibited build requests
+    prompt = (data.requirements or {}).get("prompt") or data.description or ""
+    if isinstance(prompt, dict):
+        prompt = prompt.get("prompt") or str(prompt)
+    if legal_check_request and prompt:
+        compliance = legal_check_request(prompt)
+        if not compliance.get("allowed"):
+            await db.blocked_requests.insert_one({
+                "user_id": user["id"],
+                "prompt": prompt[:2000],
+                "reason": compliance.get("reason"),
+                "category": compliance.get("category"),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "blocked",
+            })
+            raise HTTPException(
+                status_code=400,
+                detail=compliance.get("reason") or "Request violates Acceptable Use Policy. See /aup for details.",
+            )
+
     project_id = str(uuid.uuid4())
     project = {
         "id": project_id,
@@ -1896,7 +2418,13 @@ async def create_project(data: ProjectCreate, background_tasks: BackgroundTasks,
         "live_url": None
     }
     await db.projects.insert_one(project)
-    
+    if audit_logger:
+        await audit_logger.log(
+            user["id"], "project_created",
+            resource_type="project", resource_id=project_id,
+            new_value={"name": data.name},
+            ip_address=getattr(request.client, "host", None),
+        )
     await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -estimated_credits}})
     
     background_tasks.add_task(run_orchestration_v2, project_id, user["id"])
@@ -1955,6 +2483,159 @@ async def get_project_export_deploy(project_id: str, user: dict = Depends(get_cu
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=crucibai-deploy.zip"},
     )
+
+
+@api_router.get("/users/me/deploy-tokens")
+async def get_deploy_tokens_status(user: dict = Depends(get_current_user)):
+    """Return whether user has deploy tokens set (no values). For UI to show one-click availability."""
+    u = await db.users.find_one({"id": user["id"]}, {"deploy_tokens": 1})
+    dt = u.get("deploy_tokens") or {}
+    return {"has_vercel": bool(dt.get("vercel")), "has_netlify": bool(dt.get("netlify"))}
+
+
+@api_router.patch("/users/me/deploy-tokens")
+async def update_deploy_tokens(data: DeployTokensUpdate, user: dict = Depends(get_current_user)):
+    """Set deploy tokens for one-click Vercel/Netlify. Only updates provided keys."""
+    update = {}
+    if data.vercel is not None:
+        update["deploy_tokens.vercel"] = data.vercel.strip() if data.vercel else None
+    if data.netlify is not None:
+        update["deploy_tokens.netlify"] = data.netlify.strip() if data.netlify else None
+    if not update:
+        return {"ok": True}
+    await db.users.update_one({"id": user["id"]}, {"$set": update})
+    return {"ok": True}
+
+
+async def _get_project_deploy_files(project_id: str, user_id: str) -> tuple[Dict[str, str], str]:
+    """Return (deploy_files dict, project_name) for a project. Raises HTTPException if not found."""
+    project = await db.projects.find_one({"id": project_id, "user_id": user_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    deploy_files = project.get("deploy_files") or {}
+    if not deploy_files:
+        raise HTTPException(
+            status_code=404,
+            detail="No deploy snapshot. Open in Workspace and use Deploy there, or re-run the build.",
+        )
+    name = (project.get("name") or "crucibai-app").replace(" ", "-")[:50]
+    return deploy_files, name
+
+
+@api_router.post("/projects/{project_id}/deploy/vercel")
+async def one_click_deploy_vercel(
+    project_id: str,
+    request: Request,
+    body: DeployOneClickBody = None,
+    user: dict = Depends(get_current_user),
+):
+    """One-click deploy to Vercel. Uses token from body, or user's stored deploy_tokens.vercel, or env VERCEL_TOKEN."""
+    deploy_files, project_name = await _get_project_deploy_files(project_id, user["id"])
+    u = await db.users.find_one({"id": user["id"]}, {"deploy_tokens": 1})
+    vercel_token = (
+        (body.token if body and body.token else None)
+        or (u.get("deploy_tokens") or {}).get("vercel")
+        or os.environ.get("VERCEL_TOKEN")
+    )
+    if not vercel_token:
+        raise HTTPException(
+            status_code=402,
+            detail="Add your Vercel token in Settings → Deploy integrations for one-click deploy, or set VERCEL_TOKEN on server.",
+        )
+    files_payload = []
+    for path, content in deploy_files.items():
+        safe_path = (path or "").lstrip("/")
+        if not safe_path:
+            continue
+        raw = content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8")
+        files_payload.append({"file": safe_path, "data": base64.b64encode(raw).decode("ascii")})
+    if not files_payload:
+        raise HTTPException(status_code=400, detail="No deploy files to upload")
+    import httpx
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(
+            "https://api.vercel.com/v13/deployments",
+            headers={"Authorization": f"Bearer {vercel_token}", "Content-Type": "application/json"},
+            json={"name": project_name, "files": files_payload, "target": "production"},
+        )
+    if r.status_code >= 400:
+        msg = r.text
+        try:
+            msg = r.json().get("error", {}).get("message", r.text)
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=f"Vercel deploy failed: {msg}")
+    data = r.json()
+    url = data.get("url") or (data.get("alias", [""])[0] if data.get("alias") else "")
+    if not url and data.get("id"):
+        url = f"https://{data.get('id', '')}.vercel.app"
+    live_url = url or data.get("url")
+    if live_url:
+        await db.projects.update_one({"id": project_id, "user_id": user["id"]}, {"$set": {"live_url": live_url}})
+        if audit_logger:
+            await audit_logger.log(
+                user["id"], "project_deployed",
+                resource_type="project", resource_id=project_id,
+                new_value={"live_url": live_url},
+                ip_address=getattr(request.client, "host", None),
+            )
+    return {"url": live_url, "deployment_id": data.get("id"), "status": data.get("status")}
+
+
+@api_router.post("/projects/{project_id}/deploy/netlify")
+async def one_click_deploy_netlify(
+    project_id: str,
+    request: Request,
+    body: Optional[DeployOneClickBody] = None,
+    user: dict = Depends(get_current_user),
+):
+    """One-click deploy to Netlify. Uses token from body, or user's stored deploy_tokens.netlify, or env NETLIFY_TOKEN."""
+    buf = await _build_project_deploy_zip(project_id, user["id"])
+    zip_bytes = buf.getvalue()
+    u = await db.users.find_one({"id": user["id"]}, {"deploy_tokens": 1})
+    netlify_token = (
+        (body.token if body and body.token else None)
+        or (u.get("deploy_tokens") or {}).get("netlify")
+        or os.environ.get("NETLIFY_TOKEN")
+    )
+    if not netlify_token:
+        raise HTTPException(
+            status_code=402,
+            detail="Add your Netlify token in Settings → Deploy integrations for one-click deploy, or set NETLIFY_TOKEN on server.",
+        )
+    import httpx
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        r = await client.post(
+            "https://api.netlify.com/api/v1/sites",
+            headers={
+                "Authorization": f"Bearer {netlify_token}",
+                "Content-Type": "application/zip",
+            },
+            content=zip_bytes,
+        )
+    if r.status_code >= 400:
+        msg = r.text
+        try:
+            msg = r.json().get("message", r.text)
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=f"Netlify deploy failed: {msg}")
+    data = r.json()
+    url = data.get("ssl_url") or data.get("url") or ""
+    if not url and data.get("default_subdomain"):
+        url = f"https://{data['default_subdomain']}.netlify.app"
+    if not url and data.get("name"):
+        url = f"https://{data['name']}.netlify.app"
+    if url:
+        await db.projects.update_one({"id": project_id, "user_id": user["id"]}, {"$set": {"live_url": url}})
+        if audit_logger:
+            await audit_logger.log(
+                user["id"], "project_deployed",
+                resource_type="project", resource_id=project_id,
+                new_value={"live_url": url},
+                ip_address=getattr(request.client, "host", None),
+            )
+    return {"url": url, "site_id": data.get("id")}
 
 
 @api_router.post("/projects/{project_id}/retry-phase")
@@ -2331,6 +3012,28 @@ async def _run_single_agent_with_context(
     )
     tokens_used = max(100, min(200000, (len(enhanced_message) + len(response or "")) * 2))
     out = (response or "").strip()
+
+    # Image Generation: LLM returns JSON prompts -> Together.ai generates images
+    if agent_name == "Image Generation" and generate_images_for_app and parse_image_prompts:
+        try:
+            prompts_dict = parse_image_prompts(out)
+            design_desc = enhanced_message[:1000] if enhanced_message else project_prompt[:500]
+            images = await generate_images_for_app(design_desc, prompts_dict if prompts_dict else None)
+            out = json.dumps(images) if images else out
+            return {"output": out, "tokens_used": tokens_used, "status": "completed", "result": out, "code": out, "images": images}
+        except Exception as e:
+            logger.warning("Image generation agent failed: %s", e)
+    # Video Generation: LLM returns JSON search queries -> Pexels finds videos
+    if agent_name == "Video Generation" and generate_videos_for_app and parse_video_queries:
+        try:
+            queries_dict = parse_video_queries(out)
+            design_desc = enhanced_message[:1000] if enhanced_message else project_prompt[:500]
+            videos = await generate_videos_for_app(design_desc, queries_dict if queries_dict else None)
+            out = json.dumps(videos) if videos else out
+            return {"output": out, "tokens_used": tokens_used, "status": "completed", "result": out, "code": out, "videos": videos}
+        except Exception as e:
+            logger.warning("Video generation agent failed: %s", e)
+
     return {"output": out, "tokens_used": tokens_used, "status": "completed", "result": out, "code": out}
 
 
@@ -2368,6 +3071,87 @@ async def _run_single_agent_with_retry(
         fallback = generate_fallback(agent_name)
         return {"output": fallback, "result": fallback, "tokens_used": 0, "status": "failed_with_fallback", "reason": str(last_err), "recoverable": True}
     return {"output": "", "tokens_used": 0, "status": "skipped", "reason": str(last_err), "recoverable": True}
+
+
+def _inject_media_into_jsx(jsx: str, images: Dict[str, str], videos: Dict[str, str]) -> str:
+    """Inject image/video URLs into generated JSX. Replaces placeholders or prepends a media section."""
+    if not jsx or (not images and not videos):
+        return jsx
+    # Replace placeholders if present
+    out = jsx
+    if images.get("hero"):
+        out = out.replace("CRUCIBAI_HERO_IMG", images["hero"]).replace("{{HERO_IMAGE}}", images["hero"])
+    if images.get("feature_1"):
+        out = out.replace("CRUCIBAI_FEATURE_1_IMG", images["feature_1"]).replace("{{FEATURE_1_IMAGE}}", images["feature_1"])
+    if images.get("feature_2"):
+        out = out.replace("CRUCIBAI_FEATURE_2_IMG", images["feature_2"]).replace("{{FEATURE_2_IMAGE}}", images["feature_2"])
+    if videos.get("hero"):
+        out = out.replace("CRUCIBAI_HERO_VIDEO", videos["hero"]).replace("{{HERO_VIDEO}}", videos["hero"])
+    if videos.get("feature"):
+        out = out.replace("CRUCIBAI_FEATURE_VIDEO", videos["feature"]).replace("{{FEATURE_VIDEO}}", videos["feature"])
+    # If no placeholders were used, prepend a media section after "return ("
+    if out == jsx and ("CRUCIBAI_" not in jsx and "{{HERO" not in jsx):
+        media_parts = []
+        if videos.get("hero"):
+            media_parts.append(f'<section className="relative w-full h-48 md:h-64 overflow-hidden rounded-lg"><video autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover" src="{videos["hero"]}" /></section>')
+        img_keys = ["hero", "feature_1", "feature_2"]
+        img_urls = [images.get(k) for k in img_keys if images.get(k)]
+        if img_urls:
+            divs = "".join(f'<div><img src="{u}" alt="Media" className="w-full h-32 object-cover rounded-lg" /></div>' for u in img_urls)
+            media_parts.append(f'<section className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">{divs}</section>')
+        if media_parts:
+            block = "\n      ".join(media_parts)
+            idx = out.find("return (")
+            if idx != -1:
+                insert = idx + len("return (")
+                out = out[:insert] + "\n      " + block + "\n      " + out[insert:].lstrip()
+    return out
+
+
+# CrucibAI attribution: comment at top + footer. Free = iframe (served from our server, not removable). Paid = static div (user may remove).
+CRUCIBAI_TOP_COMMENT = "// Built with CrucibAI · https://crucibai.com\n"
+# URL for free-tier iframe: badge content is on our server so free users have no way to remove it (only the iframe tag in source).
+_BRANDING_BASE_URL = os.environ.get("CRUCIBAI_BRANDING_URL") or (os.environ.get("BACKEND_PUBLIC_URL", "http://localhost:8000").rstrip("/") + "/branding")
+# Free: iframe loads badge from our server — permanent, not in their editable content.
+CRUCIBAI_FREE_FOOTER_JSX = (
+    f'<iframe src="{_BRANDING_BASE_URL}" title="Built with CrucibAI" '
+    'style={{ border: "none", height: "28px", width: "100%", display: "block" }} />'
+)
+# Paid: static div so they can remove it in the editor if they want.
+CRUCIBAI_PAID_FOOTER_JSX = (
+    '<div className="mt-8 py-3 text-center text-sm text-gray-500 border-t border-gray-200/50">'
+    '<a href="https://crucibai.com" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-700">Built with CrucibAI</a>'
+    '</div>'
+)
+
+
+def _inject_crucibai_branding(jsx: str, plan: str) -> str:
+    """Add CrucibAI attribution. Free: iframe (content on our server — cannot be removed). Paid: static div (user may remove)."""
+    if not jsx or not jsx.strip():
+        return jsx
+    out = jsx
+    # 1) Top comment (watermark in code)
+    if "crucibai.com" not in out.lower() and "Built with CrucibAI" not in out:
+        if out.lstrip().startswith("//") or out.lstrip().startswith("/*"):
+            first_newline = out.find("\n")
+            if first_newline != -1:
+                out = out[: first_newline + 1] + CRUCIBAI_TOP_COMMENT + out[first_newline + 1 :]
+            else:
+                out = CRUCIBAI_TOP_COMMENT + out
+        else:
+            out = CRUCIBAI_TOP_COMMENT + out
+    # 2) Footer: free = iframe (permanent); paid = static div (removable)
+    is_free = (plan or "free").lower() == "free"
+    already_has = (CRUCIBAI_PAID_FOOTER_JSX in out) or (is_free and "/branding" in out)
+    if not already_has:
+        footer_jsx = CRUCIBAI_FREE_FOOTER_JSX if is_free else CRUCIBAI_PAID_FOOTER_JSX
+        idx = out.rfind(");")
+        if idx != -1:
+            before = out[:idx]
+            last_div = before.rfind("</div>")
+            if last_div != -1:
+                out = out[:last_div] + "\n      " + footer_jsx + "\n      " + out[last_div:]
+    return out
 
 
 def _infer_build_kind(prompt: str) -> str:
@@ -2478,9 +3262,15 @@ async def run_orchestration_v2(project_id: str, user_id: str):
     be = (results.get("Backend Generation") or {}).get("output") or ""
     db_schema = (results.get("Database Agent") or {}).get("output") or ""
     tests = (results.get("Test Generation") or {}).get("output") or ""
+    images = (results.get("Image Generation") or {}).get("images") or {}
+    videos = (results.get("Video Generation") or {}).get("videos") or {}
     quality = score_generated_code(frontend_code=fe, backend_code=be, database_schema=db_schema, test_code=tests)
     deploy_files = {}
     if fe:
+        fe = _inject_media_into_jsx(fe, images, videos)
+        user_doc = await db.users.find_one({"id": user_id}, {"plan": 1})
+        user_plan = (user_doc or {}).get("plan") or "free"
+        fe = _inject_crucibai_branding(fe, user_plan)
         deploy_files["src/App.jsx"] = fe
     if be:
         deploy_files["server.py"] = be
@@ -2496,6 +3286,10 @@ async def run_orchestration_v2(project_id: str, user_id: str):
         "quality_score": quality,
         "orchestration_version": "v2_dag",
     }
+    if images:
+        set_payload["images"] = images
+    if videos:
+        set_payload["videos"] = videos
     if deploy_files:
         set_payload["deploy_files"] = deploy_files
     if suggest_retry_phase is not None:
@@ -2637,7 +3431,7 @@ def get_current_admin(required_roles: tuple = ADMIN_ROLES):
     return _inner
 
 class GrantCreditsBody(BaseModel):
-    credits: int
+    credits: int = Field(gt=0, description="Credits to grant (must be positive)")
     reason: Optional[str] = "Support bonus"
 
 class SuspendBody(BaseModel):
@@ -2876,6 +3670,8 @@ async def admin_grant_credits(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "granted_by": admin["id"],
     })
+    if audit_logger:
+        await audit_logger.log(admin["id"], "admin_grant_credits", resource_type="user", resource_id=user_id, details={"credits": body.credits, "reason": body.reason})
     return {"ok": True, "credits_added": body.credits}
 
 @api_router.post("/admin/users/{user_id}/suspend")
@@ -2893,6 +3689,8 @@ async def admin_suspend_user(
         {"id": user_id},
         {"$set": {"suspended": True, "suspended_at": datetime.now(timezone.utc).isoformat(), "suspended_reason": body.reason}},
     )
+    if audit_logger:
+        await audit_logger.log(admin["id"], "admin_suspend_user", resource_type="user", resource_id=user_id, details={"reason": body.reason})
     return {"ok": True, "suspended": True}
 
 @api_router.post("/admin/users/{user_id}/downgrade")
@@ -2902,6 +3700,8 @@ async def admin_downgrade_user(user_id: str, admin: dict = Depends(get_current_a
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     await db.users.update_one({"id": user_id}, {"$set": {"plan": "free"}})
+    if audit_logger:
+        await audit_logger.log(admin["id"], "admin_downgrade_user", resource_type="user", resource_id=user_id, details={"plan": "free"})
     return {"ok": True, "plan": "free"}
 
 @api_router.get("/admin/users/{user_id}/export")
@@ -2939,6 +3739,52 @@ async def admin_billing_transactions(
 async def admin_fraud_flags(admin: dict = Depends(get_current_admin(("owner", "operations")))):
     """Stub: high-risk accounts. Later: same IP > N signups, device clustering."""
     return {"flags": [], "message": "Fraud flags from IP/device clustering to be implemented"}
+
+@api_router.get("/admin/legal/blocked-requests")
+async def admin_legal_blocked_requests(
+    status: Optional[str] = None,
+    limit: int = 100,
+    admin: dict = Depends(get_current_admin(ADMIN_ROLES)),
+):
+    """List AUP-blocked build requests for review. Optional ?status=blocked."""
+    q = {}
+    if status:
+        q["status"] = status
+    cursor = db.blocked_requests.find(q).sort("timestamp", -1).limit(limit)
+    rows = await cursor.to_list(length=limit)
+    out = []
+    for r in rows:
+        out.append({
+            "id": str(r.get("_id")),
+            "user_id": r.get("user_id"),
+            "prompt": r.get("prompt"),
+            "reason": r.get("reason"),
+            "category": r.get("category"),
+            "status": r.get("status", "blocked"),
+            "timestamp": r.get("timestamp"),
+        })
+    return {"blocked_requests": out}
+
+@api_router.post("/admin/legal/review/{request_id}")
+async def admin_legal_review(
+    request_id: str,
+    data: dict,
+    admin: dict = Depends(get_current_admin(("owner", "operations"))),
+):
+    """Mark blocked request as reviewed (false_positive, confirmed, escalated)."""
+    from bson import ObjectId
+    try:
+        oid = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request id")
+    action = data.get("action") or data.get("review")
+    if not action:
+        raise HTTPException(status_code=400, detail="action or review required")
+    await db.blocked_requests.update_one(
+        {"_id": oid},
+        {"$set": {"status": "reviewed", "review_action": action, "reviewed_by": admin.get("id"), "reviewed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True, "request_id": request_id, "action": action}
 
 @api_router.get("/admin/referrals/links")
 async def admin_referral_links(admin: dict = Depends(get_current_admin(ADMIN_ROLES))):
@@ -3385,6 +4231,14 @@ async def health():
 
 # Include router
 app.include_router(api_router)
+
+# Free-tier branding: served from our server so it cannot be removed from user's source (they only have an iframe tag).
+BRANDING_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;font-family:system-ui,sans-serif;font-size:12px;display:flex;align-items:center;justify-content:center;min-height:28px;background:transparent;color:#6b7280;"><a href="https://crucibai.com" target="_blank" rel="noopener noreferrer" style="color:#6b7280;text-decoration:none;">Built with CrucibAI</a></body></html>"""
+
+@app.get("/branding")
+async def branding_badge():
+    """Serves the CrucibAI badge for free-tier iframe. Content is on our server so free users cannot remove it."""
+    return Response(content=BRANDING_HTML, media_type="text/html")
 
 
 @app.websocket("/ws/projects/{project_id}/progress")

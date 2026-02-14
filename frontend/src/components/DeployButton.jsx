@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Download, ExternalLink, FileText, ChevronDown, Globe } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
@@ -24,13 +25,13 @@ const DEPLOY_INSTRUCTIONS = `# Deploy this project
 
 Generated with CrucibAI.`;
 
-const VERCEL_NEW_URL = 'https://vercel.com/new';
-const NETLIFY_START_URL = 'https://app.netlify.com/start';
-const NETLIFY_DROP_URL = 'https://app.netlify.com/drop';
+const RAILWAY_NEW_URL = 'https://railway.app/new';
 
 export default function DeployButton({ projectId, variant = 'dropdown', onFeedback }) {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [deploying, setDeploying] = useState(null); // 'vercel' | 'netlify'
   const [showInstructions, setShowInstructions] = useState(false);
   const [instructionsCopied, setInstructionsCopied] = useState(false);
   const [open, setOpen] = useState(false);
@@ -66,16 +67,35 @@ export default function DeployButton({ projectId, variant = 'dropdown', onFeedba
     }
   };
 
-  const handleDeployVercel = () => {
-    window.open(VERCEL_NEW_URL, '_blank', 'noopener,noreferrer');
-    notify('Download the Deploy ZIP above, then upload it at Vercel.', 'deploy');
+  const handleOneClickDeploy = async (provider) => {
+    if (!projectId || !token) return;
+    setDeploying(provider);
     setOpen(false);
-  };
-
-  const handleDeployNetlify = () => {
-    window.open(NETLIFY_DROP_URL, '_blank', 'noopener,noreferrer');
-    notify('Download the Deploy ZIP above, then drag & drop it at Netlify Drop.', 'deploy');
-    setOpen(false);
+    try {
+      const { data } = await axios.post(
+        `${API}/projects/${projectId}/deploy/${provider}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const url = data?.url;
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        notify(`Live on ${provider}! Opening ${url}`, 'deploy');
+      } else {
+        notify(`Deploy started on ${provider}. Check your dashboard.`, 'deploy');
+      }
+    } catch (err) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || err.message;
+      if (status === 402) {
+        notify('Add your token in Settings → Deploy for one-click deploy.', 'error');
+        navigate('/app/settings', { state: { openTab: 'deploy' } });
+      } else {
+        notify(detail || `Deploy to ${provider} failed`, 'error');
+      }
+    } finally {
+      setDeploying(null);
+    }
   };
 
   const handleCopyInstructions = async () => {
@@ -113,19 +133,29 @@ export default function DeployButton({ projectId, variant = 'dropdown', onFeedba
       </button>
       <button
         type="button"
-        onClick={handleDeployVercel}
-        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-white/10 rounded-lg"
+        onClick={() => handleOneClickDeploy('vercel')}
+        disabled={deploying !== null}
+        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-white/10 rounded-lg disabled:opacity-60"
       >
         <ExternalLink className="w-4 h-4 shrink-0" />
-        Deploy to Vercel
+        {deploying === 'vercel' ? 'Deploying…' : 'One-click Deploy to Vercel'}
       </button>
       <button
         type="button"
-        onClick={handleDeployNetlify}
+        onClick={() => handleOneClickDeploy('netlify')}
+        disabled={deploying !== null}
+        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-white/10 rounded-lg disabled:opacity-60"
+      >
+        <ExternalLink className="w-4 h-4 shrink-0" />
+        {deploying === 'netlify' ? 'Deploying…' : 'One-click Deploy to Netlify'}
+      </button>
+      <button
+        type="button"
+        onClick={() => { window.open(RAILWAY_NEW_URL, '_blank'); setOpen(false); notify('Open Railway, then connect a repo or use CLI with your ZIP.', 'deploy'); }}
         className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-white/10 rounded-lg"
       >
         <ExternalLink className="w-4 h-4 shrink-0" />
-        Deploy to Netlify
+        Deploy to Railway
       </button>
       <button
         type="button"
@@ -175,19 +205,21 @@ export default function DeployButton({ projectId, variant = 'dropdown', onFeedba
           </button>
           <button
             type="button"
-            onClick={() => window.open(VERCEL_NEW_URL, '_blank')}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/20 hover:bg-white/10 text-sm"
+            onClick={() => handleOneClickDeploy('vercel')}
+            disabled={deploying !== null}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-medium"
           >
             <ExternalLink className="w-4 h-4" />
-            Deploy to Vercel
+            {deploying === 'vercel' ? 'Deploying…' : 'One-click Vercel'}
           </button>
           <button
             type="button"
-            onClick={() => window.open(NETLIFY_DROP_URL, '_blank')}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/20 hover:bg-white/10 text-sm"
+            onClick={() => handleOneClickDeploy('netlify')}
+            disabled={deploying !== null}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-medium"
           >
             <ExternalLink className="w-4 h-4" />
-            Deploy to Netlify
+            {deploying === 'netlify' ? 'Deploying…' : 'One-click Netlify'}
           </button>
           <button
             type="button"

@@ -8,6 +8,7 @@ import {
 import { useAuth, API } from '../App';
 import axios from 'axios';
 import BuildProgress from '../components/BuildProgress';
+import QualityScore from '../components/QualityScore';
 
 const AgentMonitor = () => {
   const { id } = useParams();
@@ -120,6 +121,53 @@ const AgentMonitor = () => {
     <div className="space-y-6" data-testid="agent-monitor">
       {project.status === 'running' && (
         <BuildProgress projectId={id} apiBaseUrl={(API || '').replace(/\/api\/?$/, '')} />
+      )}
+      {/* Generated images + videos when build completed */}
+      {project.status === 'completed' && (project.images || project.videos) && (
+        <div className="p-4 rounded-xl border border-white/10 bg-[#0a0a0a]">
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Generated media</h3>
+          {project.images && Object.keys(project.images).length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              {project.images.hero && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Hero image</p>
+                  <img src={project.images.hero} alt="Hero" className="w-full h-32 object-cover rounded-lg border border-white/10" />
+                </div>
+              )}
+              {project.images.feature_1 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Feature 1</p>
+                  <img src={project.images.feature_1} alt="Feature 1" className="w-full h-32 object-cover rounded-lg border border-white/10" />
+                </div>
+              )}
+              {project.images.feature_2 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Feature 2</p>
+                  <img src={project.images.feature_2} alt="Feature 2" className="w-full h-32 object-cover rounded-lg border border-white/10" />
+                </div>
+              )}
+            </div>
+          )}
+          {project.videos && project.videos.hero && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Hero video</p>
+              <video src={project.videos.hero} autoPlay muted loop playsInline className="w-full h-48 object-cover rounded-lg border border-white/10" />
+            </div>
+          )}
+          {project.videos && project.videos.feature && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 mb-2">Feature video</p>
+              <video src={project.videos.feature} autoPlay muted loop playsInline className="w-full h-48 object-cover rounded-lg border border-white/10" />
+            </div>
+          )}
+        </div>
+      )}
+      {/* Quality score (0–100 + breakdown) when build completed */}
+      {project.status === 'completed' && project.quality_score && (
+        <div className="p-4 rounded-xl border border-white/10 bg-[#0a0a0a]">
+          <h3 className="text-sm font-medium text-gray-400 mb-2">Code quality</h3>
+          <QualityScore score={project.quality_score} />
+        </div>
       )}
       {/* 10/10: Phase retry suggestion when Quality phase had many failures */}
       {project.status === 'completed' && (project.suggest_retry_phase != null || project.suggest_retry_reason) && (

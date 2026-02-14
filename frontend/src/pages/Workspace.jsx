@@ -451,9 +451,13 @@ const Workspace = () => {
         const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
         setIsTranscribing(true);
         addLog('Transcribing...', 'info', 'voice');
-        await transcribeAudio(blob, ext);
+        try {
+          await transcribeAudio(blob, ext);
+        } finally {
+          setIsTranscribing(false);
+        }
       };
-      recorder.start(200);
+      recorder.start(1000);
       mediaRecorderRef.current = { recorder, stream };
       setIsRecording(true);
       addLog('Listening...', 'info', 'voice');
@@ -493,8 +497,6 @@ const Workspace = () => {
       const msg = err.response?.data?.detail || err.message || 'Transcription failed.';
       addLog(msg, 'error', 'voice');
       setLastError(msg);
-    } finally {
-      setIsTranscribing(false);
     }
   };
 
@@ -1809,6 +1811,9 @@ Respond with ONLY the complete App.js code, nothing else.`;
               </a>
               <a href="https://app.netlify.com/drop" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
                 Deploy with Netlify
+              </a>
+              <a href="https://railway.app/new" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#0B0D0E] text-white text-sm font-medium hover:bg-[#1a1d1f] border border-gray-600">
+                Deploy with Railway
               </a>
             </div>
             <button type="button" onClick={() => setShowDeployModal(false)} className="mt-4 w-full py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg">Close</button>

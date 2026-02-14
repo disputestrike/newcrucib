@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Globe, Server, Database, Layers, Zap, ArrowRight, 
@@ -262,9 +262,17 @@ const ProjectBuilder = () => {
           <p className="text-gray-400 mb-8">Make sure everything looks good before we start generating.</p>
           
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5" />
-              {error}
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+              {(error.includes('Acceptable Use') || error.toLowerCase().includes('violates')) && (
+                <p className="mt-2 text-sm">
+                  <Link to="/aup" className="text-blue-400 hover:underline">View Acceptable Use Policy</Link>
+                  {' '}· Appeals: appeals@crucibai.com
+                </p>
+              )}
             </div>
           )}
 

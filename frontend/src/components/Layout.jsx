@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, LayoutDashboard, FolderPlus, Coins, FileOutput, 
   Library, Settings, LogOut, Menu, X, ChevronRight,
-  Zap, Bell, MessageSquare, LayoutGrid, BookOpen, Key, Keyboard, CreditCard, FileText
+  Zap, Bell, MessageSquare, LayoutGrid, BookOpen, Key, Keyboard, CreditCard, FileText, Shield, ScrollText
 } from 'lucide-react';
 
 const Layout = () => {
@@ -31,7 +31,7 @@ const Layout = () => {
   const navigation = [
     { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
     { name: 'New Project', href: '/app/projects/new', icon: FolderPlus },
-    { name: 'Token Center', href: '/app/tokens', icon: Coins },
+    { name: 'Credit Center', href: '/app/tokens', icon: Coins },
     { name: 'Exports', href: '/app/exports', icon: FileOutput },
     { name: 'Docs / Slides / Sheets', href: '/app/generate', icon: FileText },
     { name: 'Patterns', href: '/app/patterns', icon: Library },
@@ -41,8 +41,13 @@ const Layout = () => {
     { name: 'Env', href: '/app/env', icon: Key },
     { name: 'Shortcuts', href: '/app/shortcuts', icon: Keyboard },
     { name: 'Add payments', href: '/app/payments-wizard', icon: CreditCard },
-    { name: 'Settings', href: '/app/settings', icon: Settings }
+    { name: 'Settings', href: '/app/settings', icon: Settings },
+    { name: 'Audit Log', href: '/app/audit-log', icon: ScrollText }
   ];
+  const adminNav = user?.admin_role
+    ? [{ name: 'Admin', href: '/app/admin', icon: Shield }]
+    : [];
+  const navigationWithAdmin = [...navigation, ...adminNav];
 
   const handleLogout = () => {
     logout();
@@ -93,7 +98,7 @@ const Layout = () => {
             className="lg:hidden fixed inset-0 z-40 bg-[#050505] pt-16"
           >
             <div className="p-4 space-y-2">
-              {navigation.map(item => <NavItem key={item.name} item={item} mobile />)}
+              {navigationWithAdmin.map(item => <NavItem key={item.name} item={item} mobile />)}
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg transition"
@@ -128,7 +133,7 @@ const Layout = () => {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          {navigation.map(item => <NavItem key={item.name} item={item} />)}
+          {navigationWithAdmin.map(item => <NavItem key={item.name} item={item} />)}
         </nav>
 
         {/* Credits & plan (Base44-style) */}
@@ -168,6 +173,9 @@ const Layout = () => {
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate" data-testid="sidebar-user-name">{user?.name}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                <Link to="/pricing" className="text-xs text-blue-400 hover:text-blue-300 truncate block mt-0.5" title="View plans">
+                  Plan: {user?.plan ? String(user.plan).charAt(0).toUpperCase() + String(user.plan).slice(1) : 'Free'}
+                </Link>
               </div>
             )}
             <button 
@@ -186,6 +194,11 @@ const Layout = () => {
       <main className={`min-h-screen pt-16 lg:pt-0 transition-all duration-300 bg-[#FAF9F7] ${
         sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'
       }`}>
+        {user?.internal_team && (
+          <div className="bg-amber-100 border-b border-amber-300 px-4 py-2 text-center text-sm text-amber-900 font-medium" data-testid="internal-watermark">
+            {user?.internal_label || '[INTERNAL]'} — Internal use only
+          </div>
+        )}
         <div className="p-6">
           <Outlet />
         </div>
@@ -202,8 +215,12 @@ const Layout = () => {
             {backendOk === null && <span>Checking…</span>}
           </span>
           <span className="flex gap-4">
+            <Link to="/about" className="hover:text-gray-800">About</Link>
             <Link to="/privacy" className="hover:text-gray-800">Privacy</Link>
             <Link to="/terms" className="hover:text-gray-800">Terms</Link>
+            <Link to="/aup" className="hover:text-gray-800">Acceptable Use</Link>
+            <Link to="/dmca" className="hover:text-gray-800">DMCA</Link>
+            <Link to="/cookies" className="hover:text-gray-800">Cookies</Link>
           </span>
         </footer>
       </main>

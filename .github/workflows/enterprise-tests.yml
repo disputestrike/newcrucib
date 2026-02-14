@@ -84,11 +84,35 @@ jobs:
         run: cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &
       - name: Wait for backend
         run: npx wait-on -t 30000 http://localhost:8000/api/health || sleep 15
-      - name: Run pytest (integration + smoke)
+      - name: Run production validation (5-layer)
+        run: |
+          cd backend && python -m pytest \
+            tests/test_endpoint_mapping.py \
+            tests/test_webhook_flows.py \
+            tests/test_data_integrity.py \
+            tests/test_user_journeys.py \
+            tests/test_security.py \
+            -v --tb=short
+        env:
+          REACT_APP_BACKEND_URL: http://localhost:8000
+          CRUCIBAI_API_URL: http://localhost:8000
+      - name: Run full pytest (integration + smoke)
         run: cd backend && pytest tests -v --tb=short
         env:
           REACT_APP_BACKEND_URL: http://localhost:8000
           CRUCIBAI_API_URL: http://localhost:8000
+      - name: Backend coverage (optional)
+        run: cd backend && pytest tests --cov=server --cov-report=xml --cov-report=term -q || true
+        env:
+          REACT_APP_BACKEND_URL: http://localhost:8000
+          CRUCIBAI_API_URL: http://localhost:8000
+      - name: Upload backend coverage
+        uses: actions/upload-artifact@v4
+        if: hashFiles('backend/coverage.xml') != ''
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 1
 
   # Layer 7: E2E (Playwright – homepage and API contract; full journey needs backend)
   e2e:

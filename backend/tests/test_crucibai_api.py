@@ -119,11 +119,15 @@ class TestTokenEndpoints:
             "name": "Test User"
         })
         token = reg.json()["token"]
-        initial_balance = reg.json()["user"]["token_balance"]
+        user = reg.json()["user"]
+        # API returns new_balance in credits (not tokens)
+        initial_credits = user.get("credit_balance") or (user.get("token_balance", 0) // 1000)
         r = await app_client.post("/api/tokens/purchase", json={"bundle": "starter"}, headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
         data = r.json()
-        assert data["new_balance"] == initial_balance + 100000
+        # starter bundle adds 100 credits
+        assert data["new_balance"] == initial_credits + 100
+        assert data["credits_added"] == 100
 
     async def test_get_token_history(self, app_client):
         test_email = f"test_history_{int(time.time())}@example.com"

@@ -7,11 +7,10 @@ import { useState, useEffect, useRef } from "react";
 const PARALLEL_PHASES = [
   ["Planner"],
   ["Requirements Clarifier", "Stack Selector"],
-  ["Frontend Generation", "Backend Generation", "Database Agent"],
-  ["API Integration", "Test Generation", "Image Generation"],
-  ["Security Checker", "Test Executor", "UX Auditor", "Performance Analyzer"],
+  ["Frontend Generation", "Backend Generation", "Database Agent", "API Integration", "Test Generation", "Image Generation"],
+  ["Video Generation", "Security Checker", "Test Executor", "UX Auditor", "Performance Analyzer"],
   ["Deployment Agent", "Error Recovery", "Memory Agent"],
-  ["PDF Export", "Excel Export", "Scraping Agent", "Automation Agent"],
+  ["PDF Export", "Excel Export", "Markdown Export", "Scraping Agent", "Automation Agent"],
 ];
 
 export default function BuildProgress({ projectId, apiBaseUrl }) {

@@ -31,19 +31,35 @@ ORCHESTRATION_AGENTS_CONFIG = {
     "Memory Agent": ("Memory Agent", "Summarize the project in 2-3 lines for reuse."),
     "PDF Export": ("PDF Export", "Describe what a one-page project summary PDF would include."),
     "Excel Export": ("Excel Export", "Suggest 3-5 columns for a project tracking spreadsheet."),
+    "Markdown Export": ("Markdown Export", "Output a short project summary in Markdown (headings, bullets)."),
     "Scraping Agent": ("Scraping Agent", "Suggest 2-3 data sources or URLs to scrape for this project."),
     "Automation Agent": ("Automation Agent", "Suggest 2-3 automated tasks or cron jobs for this project."),
+    "Design Agent": ("Design Agent", "Output JSON: hero, feature_1, feature_2 with position, aspect, role. No markdown."),
+    "Layout Agent": ("Layout Agent", "Inject image placeholders into frontend. Output updated React/JSX."),
+    "SEO Agent": ("SEO Agent", "Meta tags, OG, schema, sitemap, robots.txt."),
+    "Content Agent": ("Content Agent", "Landing copy: hero, features, CTA."),
+    "Brand Agent": ("Brand Agent", "Colors, fonts, tone. JSON."),
+    "Documentation Agent": ("Documentation Agent", "README: setup, env, run, deploy."),
+    "Validation Agent": ("Validation Agent", "3-5 validation rules, Zod/Yup schemas."),
+    "Auth Setup Agent": ("Auth Setup Agent", "JWT/OAuth flow, protected routes."),
+    "Payment Setup Agent": ("Payment Setup Agent", "Stripe checkout, webhooks."),
+    "Monitoring Agent": ("Monitoring Agent", "Sentry, analytics setup."),
+    "Accessibility Agent": ("Accessibility Agent", "3-5 a11y improvements."),
+    "DevOps Agent": ("DevOps Agent", "CI/CD, Dockerfile."),
+    "Webhook Agent": ("Webhook Agent", "Webhook endpoint design."),
+    "Email Agent": ("Email Agent", "Transactional email setup."),
+    "Legal Compliance Agent": ("Legal Compliance Agent", "GDPR/CCPA hints."),
 }
 
-# Parallel phases (agents in same list run in parallel)
+# Parallel phases (agents in same list run in parallel; order respects DAG deps)
 PARALLEL_PHASES: List[List[str]] = [
     ["Planner"],
-    ["Requirements Clarifier", "Stack Selector"],
-    ["Frontend Generation", "Backend Generation", "Database Agent"],
-    ["API Integration", "Test Generation", "Image Generation"],
-    ["Security Checker", "Test Executor", "UX Auditor", "Performance Analyzer"],
+    ["Requirements Clarifier", "Stack Selector", "Content Agent", "Legal Compliance Agent"],
+    ["Frontend Generation", "Backend Generation", "Database Agent", "Design Agent", "SEO Agent", "Brand Agent", "Auth Setup Agent", "Payment Setup Agent", "Email Agent"],
+    ["API Integration", "Test Generation", "Image Generation", "Scraping Agent", "Automation Agent"],
+    ["Security Checker", "Test Executor", "UX Auditor", "Performance Analyzer", "Layout Agent", "Validation Agent", "Accessibility Agent", "Webhook Agent"],
     ["Deployment Agent", "Error Recovery", "Memory Agent"],
-    ["PDF Export", "Excel Export", "Scraping Agent", "Automation Agent"],
+    ["PDF Export", "Excel Export", "Markdown Export", "Documentation Agent", "Monitoring Agent", "DevOps Agent"],
 ]
 
 # Criticality: critical = stop build on failure; high = use fallback; low/medium = skip
@@ -68,6 +84,21 @@ AGENT_CRITICALITY: Dict[str, str] = {
     "Excel Export": "low",
     "Scraping Agent": "low",
     "Automation Agent": "low",
+    "Design Agent": "low",
+    "Layout Agent": "low",
+    "SEO Agent": "low",
+    "Content Agent": "low",
+    "Brand Agent": "low",
+    "Documentation Agent": "low",
+    "Validation Agent": "low",
+    "Auth Setup Agent": "medium",
+    "Payment Setup Agent": "medium",
+    "Monitoring Agent": "low",
+    "Accessibility Agent": "low",
+    "DevOps Agent": "low",
+    "Webhook Agent": "low",
+    "Email Agent": "low",
+    "Legal Compliance Agent": "low",
 }
 
 AGENT_TIMEOUTS: Dict[str, int] = {
@@ -109,12 +140,21 @@ def _build_context_additions(agent_name: str, previous_outputs: Dict[str, Any], 
     if "Stack Selector" in previous_outputs and previous_outputs["Stack Selector"].get("output"):
         out = (previous_outputs["Stack Selector"]["output"] or "")[:MAX_CONTEXT_CHARS]
         parts.append(f"Selected Tech Stack:\n{out}\n\nGenerate code using this stack.")
-    if "Frontend Generation" in previous_outputs and agent_name in ("Security Checker", "UX Auditor", "Performance Analyzer"):
+    if "Frontend Generation" in previous_outputs and agent_name in ("Security Checker", "UX Auditor", "Performance Analyzer", "Layout Agent", "Validation Agent", "Accessibility Agent"):
         out = (previous_outputs["Frontend Generation"].get("output") or "")[:MAX_CONTEXT_CHARS]
         parts.append(f"Generated Frontend (excerpt):\n{out}")
-    if "Backend Generation" in previous_outputs and agent_name in ("Security Checker", "Test Generation"):
+    if "Backend Generation" in previous_outputs and agent_name in ("Security Checker", "Test Generation", "Validation Agent", "Webhook Agent"):
         out = (previous_outputs["Backend Generation"].get("output") or "")[:MAX_CONTEXT_CHARS]
         parts.append(f"Generated Backend (excerpt):\n{out}")
+    if "Design Agent" in previous_outputs and agent_name in ("Image Generation", "Layout Agent"):
+        out = (previous_outputs["Design Agent"].get("output") or "")[:MAX_CONTEXT_CHARS]
+        parts.append(f"Design placement spec:\n{out}")
+    if "Image Generation" in previous_outputs and agent_name == "Layout Agent":
+        out = (previous_outputs["Image Generation"].get("output") or "")[:MAX_CONTEXT_CHARS]
+        parts.append(f"Image prompts:\n{out}")
+    if "Deployment Agent" in previous_outputs and agent_name in ("Documentation Agent", "Monitoring Agent", "DevOps Agent"):
+        out = (previous_outputs["Deployment Agent"].get("output") or "")[:MAX_CONTEXT_CHARS]
+        parts.append(f"Deployment plan:\n{out}")
     if not parts:
         return ""
     return "\n\n---\n\n".join(parts)

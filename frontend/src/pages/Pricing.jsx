@@ -1,49 +1,127 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Zap, Check, ArrowRight } from 'lucide-react';
+import { Zap, Check, ArrowRight, Plus } from 'lucide-react';
 import { useAuth, API } from '../App';
 import PublicNav from '../components/PublicNav';
 import PublicFooter from '../components/PublicFooter';
 import axios from 'axios';
 
+// Final Model: Starter, Builder, Pro, Agency (+ add-ons). No LLM names on landing/pricing (Manus-style).
 const DEFAULT_BUNDLES = {
-  starter: { tokens: 100000, price: 9.99 },
-  pro: { tokens: 500000, price: 49.99 },
-  professional: { tokens: 1200000, price: 99.99 },
-  enterprise: { tokens: 5000000, price: 299.99 },
-  unlimited: { tokens: 25000000, price: 999.99 }
+  starter: { credits: 100, price: 12.99, name: 'Starter', speed: 'Fast builds' },
+  builder: { credits: 500, price: 29.99, name: 'Builder', speed: 'Fast builds' },
+  pro: { credits: 2000, price: 79.99, name: 'Pro', speed: 'Priority speed' },
+  agency: { credits: 10000, price: 199.99, name: 'Agency', speed: 'Priority speed' },
+};
+const BUNDLE_ORDER = ['starter', 'builder', 'pro', 'agency'];
+
+const DEFAULT_ADDONS = {
+  light: { credits: 50, price: 7, name: 'Light' },
+  dev: { credits: 250, price: 30, name: 'Dev' },
+};
+const ADDON_ORDER = ['light', 'dev'];
+
+// CrucibAI-specific features per plan (Manus-style: list what they get, not model names)
+const PLAN_FEATURES = {
+  starter: ['Landing pages & simple apps', 'Plan-first build & preview', 'Export to ZIP & GitHub', 'All features'],
+  builder: ['Landing pages & full web apps', 'Plan-first build & live preview', 'Export to ZIP & GitHub', '20 AI agents & templates'],
+  pro: ['Everything in Builder', 'Dashboards & data-heavy apps', 'Priority build speed', 'Higher credit volume'],
+  agency: ['Everything in Pro', 'High-volume builds', 'Priority speed & support', 'Team-ready credits'],
 };
 
-const BUNDLE_ORDER = ['starter', 'pro', 'professional', 'enterprise', 'unlimited'];
-const BUNDLE_LABELS = {
-  starter: 'Starter',
-  pro: 'Pro',
-  professional: 'Professional',
-  enterprise: 'Enterprise',
-  unlimited: 'Unlimited'
-};
+const CREDITS_PER_LANDING = 50;
+const CREDITS_PER_APP = 100;
+const RECOMMEND_ORDER = ['starter', 'builder', 'pro', 'agency'];
+
+function OutcomeCalculator({ bundles, onSelectPlan }) {
+  const [landings, setLandings] = useState(0);
+  const [apps, setApps] = useState(0);
+  const needed = landings * CREDITS_PER_LANDING + apps * CREDITS_PER_APP;
+  let recommended = null;
+  let recommendedCredits = 0;
+  for (const key of RECOMMEND_ORDER) {
+    const b = bundles[key];
+    if (b && b.credits >= needed) {
+      recommended = key;
+      recommendedCredits = b.credits;
+      break;
+    }
+  }
+  if (!recommended && bundles.agency) {
+    recommended = 'agency';
+    recommendedCredits = bundles.agency.credits;
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-6">
+        <label className="flex items-center gap-2">
+          <span className="text-zinc-400 text-sm">Landing pages:</span>
+          <input
+            type="number"
+            min={0}
+            value={landings}
+            onChange={(e) => setLandings(parseInt(e.target.value, 10) || 0)}
+            className="w-20 px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="text-zinc-400 text-sm">Full apps:</span>
+          <input
+            type="number"
+            min={0}
+            value={apps}
+            onChange={(e) => setApps(parseInt(e.target.value, 10) || 0)}
+            className="w-20 px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+          />
+        </label>
+      </div>
+      <p className="text-sm text-zinc-400">
+        Estimated credits needed: <strong className="text-white">{needed}</strong>
+        {recommended && (
+          <> — We recommend <strong className="text-blue-400">{bundles[recommended]?.name || recommended}</strong> ({recommendedCredits} credits/mo).</>
+        )}
+      </p>
+      {recommended && (
+        <button
+          type="button"
+          onClick={() => onSelectPlan(recommended)}
+          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium"
+        >
+          Get {bundles[recommended]?.name || recommended}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Pricing() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [bundles, setBundles] = useState(DEFAULT_BUNDLES);
+  const [addons, setAddons] = useState(DEFAULT_ADDONS);
+  const [annualPrices, setAnnualPrices] = useState({ starter: 129, builder: 299, pro: 799, agency: 1999 });
+  const [billingPeriod, setBillingPeriod] = useState('monthly'); // 'monthly' | 'annual'
 
   useEffect(() => {
     axios.get(`${API}/tokens/bundles`, { timeout: 5000 })
       .then((r) => {
-        if (r.data?.bundles && Object.keys(r.data.bundles).length > 0) {
-          setBundles(r.data.bundles);
+        if (r.data?.bundles && typeof r.data.bundles === 'object') {
+          const b = {};
+          const a = {};
+          for (const [key, val] of Object.entries(r.data.bundles)) {
+            const credits = val.credits ?? (val.tokens / 1000);
+            const item = { credits, price: val.price, name: val.name || key, speed: val.speed || '' };
+            if (ADDON_ORDER.includes(key)) a[key] = item;
+            else if (BUNDLE_ORDER.includes(key)) b[key] = item;
+          }
+          if (Object.keys(b).length > 0) setBundles((prev) => ({ ...prev, ...b }));
+          if (Object.keys(a).length > 0) setAddons((prev) => ({ ...prev, ...a }));
         }
+        if (r.data?.annual_prices && typeof r.data.annual_prices === 'object') setAnnualPrices((prev) => ({ ...prev, ...r.data.annual_prices }));
       })
       .catch(() => {});
   }, []);
-
-  const formatTokens = (n) => {
-    if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-    if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-    return String(n);
-  };
 
   return (
     <div className="min-h-screen bg-kimi-bg text-kimi-text grid-pattern-kimi">
@@ -52,7 +130,16 @@ export default function Pricing() {
         <div className="text-center mb-16">
           <span className="text-xs uppercase tracking-wider text-kimi-muted">Plans</span>
           <h1 className="text-kimi-section font-bold text-kimi-text mt-2 mb-4">Pricing</h1>
-          <p className="text-kimi-muted max-w-xl mx-auto">Token-based plans. Free tier includes credits. Pay for what you use. No expiry—your tokens stay until you use them.</p>
+          <p className="text-kimi-muted max-w-xl mx-auto">Know exactly what you're building. Free tier includes 50 credits. No surprises, no hidden limitations.</p>
+          {/* Clarity brand strip */}
+          <div className="mt-8 max-w-2xl mx-auto p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 text-left">
+            <p className="text-sm font-medium text-blue-200 mb-2">Why CrucibAI — clarity first</p>
+            <ul className="text-sm text-zinc-400 space-y-1">
+              <li>• Know exactly what you're building — plan-first, no guesswork.</li>
+              <li>• 92% margin means we survive and keep improving (unlike VC-funded competitors).</li>
+              <li>• No surprises, no hidden limitations — credits, caps, and rollover are transparent.</li>
+            </ul>
+          </div>
         </div>
 
         {/* Free tier */}
@@ -64,12 +151,12 @@ export default function Pricing() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h2 className="text-2xl font-semibold mb-2">Start for free</h2>
-              <p className="text-zinc-500 mb-4">Try CrucibAI with no credit card. Build, export, and deploy.</p>
+              <p className="text-zinc-500 mb-4">50 credits. Build landing pages, export, and deploy. No credit card.</p>
               <ul className="space-y-2 text-sm text-zinc-400">
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> Core build & preview</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> Export to ZIP & GitHub</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> All 20 AI agents</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> Templates & prompt library</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> 50 credits for landing pages</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> Plan-first build & live preview</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> Export to ZIP & push to GitHub</li>
+                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500 shrink-0" /> 20 AI agents, templates & prompt library</li>
               </ul>
             </div>
             <div className="shrink-0">
@@ -85,14 +172,36 @@ export default function Pricing() {
           </div>
         </motion.div>
 
-        {/* Token bundles */}
-        <h2 className="text-xl font-semibold text-center mb-2">Token packs</h2>
-        <p className="text-zinc-500 text-center mb-10">Buy tokens once. Use them for builds. They don’t expire.</p>
+        {/* Credit plans */}
+        <h2 className="text-xl font-semibold text-center mb-2">Credit plans</h2>
+        <p className="text-zinc-500 text-center mb-4">More credits, faster builds. Unused credits roll over.</p>
+        <div className="flex justify-center gap-2 mb-10">
+          <button
+            type="button"
+            onClick={() => setBillingPeriod('monthly')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${billingPeriod === 'monthly' ? 'bg-white text-black' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingPeriod('annual')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${billingPeriod === 'annual' ? 'bg-white text-black' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}
+          >
+            Annual <span className="text-green-400 text-xs">Save 17%</span>
+          </button>
+        </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {BUNDLE_ORDER.filter((k) => bundles[k]).map((key, i) => {
             const b = bundles[key];
-            const isPro = key === 'pro';
+            const isBuilder = key === 'builder';
+            const features = PLAN_FEATURES[key] || ['All features'];
+            const showSpeed = b.speed && !String(b.speed).toLowerCase().includes('haiku') && !String(b.speed).toLowerCase().includes('cerebras');
+            const annualPrice = annualPrices[key];
+            const displayPrice = billingPeriod === 'annual' && annualPrice ? annualPrice : b.price;
+            const monthlyEquivalent = billingPeriod === 'annual' && annualPrice ? (annualPrice / 12).toFixed(2) : null;
+            const savePct = billingPeriod === 'annual' && annualPrice && b.price ? Math.round((1 - annualPrice / (b.price * 12)) * 100) : 0;
             return (
               <motion.div
                 key={key}
@@ -100,36 +209,39 @@ export default function Pricing() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
                 className={`relative p-6 rounded-2xl border ${
-                  isPro ? 'border-blue-500/50 bg-blue-500/5' : 'border-zinc-800 bg-zinc-900/30'
+                  isBuilder ? 'border-blue-500/50 bg-blue-500/5' : 'border-zinc-800 bg-zinc-900/30'
                 }`}
               >
-                {isPro && (
+                {isBuilder && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blue-500 text-white text-xs font-medium">
                     Popular
                   </span>
                 )}
                 <div className="flex items-center gap-2 mb-4">
                   <Zap className="w-5 h-5 text-yellow-500" />
-                  <h3 className="text-lg font-semibold">{BUNDLE_LABELS[key]}</h3>
+                  <h3 className="text-lg font-semibold">{b.name}</h3>
                 </div>
                 <div className="mb-2">
-                  <span className="text-3xl font-bold">${Number(b.price).toFixed(2)}</span>
+                  <span className="text-3xl font-bold">${Number(displayPrice).toFixed(2)}</span>
+                  <span className="text-zinc-500 font-normal text-base ml-1">{billingPeriod === 'annual' ? '/year' : '/month'}</span>
+                  {monthlyEquivalent && <span className="text-zinc-500 text-sm block mt-0.5">${monthlyEquivalent}/mo</span>}
+                  {savePct > 0 && <span className="text-green-400 text-xs font-medium">Save {savePct}%</span>}
                 </div>
-                <p className="text-zinc-500 text-sm mb-6">
-                  {formatTokens(b.tokens)} tokens
-                </p>
+                <p className="text-zinc-500 text-sm mb-1">{b.credits} credits per month</p>
+                {showSpeed && <p className="text-zinc-500 text-xs mb-4">{b.speed}</p>}
                 <ul className="space-y-2 text-xs text-zinc-400 mb-6">
-                  <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-green-500 shrink-0" /> All features</li>
-                  <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-green-500 shrink-0" /> No expiry</li>
-                  <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-green-500 shrink-0" /> Priority support {key === 'enterprise' || key === 'unlimited' ? '✓' : ''}</li>
+                  {features.map((f, j) => (
+                    <li key={j} className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-green-500 shrink-0" /> {f}</li>
+                  ))}
+                  <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-green-500 shrink-0" /> Unused credits roll over</li>
                 </ul>
                 <button
                   onClick={() => navigate(user ? '/app/tokens' : '/auth?mode=register')}
                   className={`w-full py-2.5 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
-                    isPro ? 'bg-blue-500 hover:bg-blue-600' : 'bg-zinc-700 hover:bg-zinc-600'
+                    isBuilder ? 'bg-blue-500 hover:bg-blue-600' : 'bg-zinc-700 hover:bg-zinc-600'
                   }`}
                 >
-                  {user ? 'Buy tokens' : 'Get started'}
+                  {user ? 'Buy credits' : 'Get started'}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </motion.div>
@@ -137,15 +249,52 @@ export default function Pricing() {
           })}
         </div>
 
+        {/* Add-ons */}
+        <h2 className="text-lg font-semibold text-center mt-14 mb-2">Add-ons</h2>
+        <p className="text-zinc-500 text-center mb-6">One-time top-ups. Buy as many as you need, anytime—no limit. Credits roll over.</p>
+        <div className="flex flex-wrap justify-center gap-6 max-w-2xl mx-auto">
+          {ADDON_ORDER.filter((k) => addons[k]).map((key) => {
+            const a = addons[key];
+            return (
+              <motion.div
+                key={key}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-900/30"
+              >
+                <Plus className="w-5 h-5 text-zinc-500" />
+                <div>
+                  <span className="font-medium">{a.name}</span>
+                  <span className="text-zinc-500 text-sm ml-2">— {a.credits} credits</span>
+                </div>
+                <span className="text-lg font-bold">${Number(a.price).toFixed(2)}</span>
+                <button
+                  onClick={() => navigate(user ? '/app/tokens' : '/auth?mode=register')}
+                  className="py-2 px-4 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm font-medium"
+                >
+                  {user ? 'Buy' : 'Get started'}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+
         <p className="text-center text-zinc-500 text-sm mt-10">
-          Need a custom plan? <a href="mailto:support@crucibai.com" className="text-blue-400 hover:text-blue-300">Contact us</a>.
+          Need a custom plan? <Link to="/enterprise" className="text-blue-400 hover:text-blue-300">Enterprise / Contact sales</Link>.
         </p>
+
+        {/* Outcome calculator: X landings + Y apps → recommended plan */}
+        <div className="mt-16 max-w-2xl mx-auto p-6 rounded-2xl border border-zinc-800 bg-zinc-900/30">
+          <h3 className="text-lg font-semibold mb-2">How many credits do I need?</h3>
+          <p className="text-zinc-500 text-sm mb-4">Rough guide: ~50 credits ≈ 1 landing page, ~100 credits ≈ 1 full app. Enter your goals for a recommendation.</p>
+          <OutcomeCalculator bundles={bundles} onSelectPlan={(key) => navigate(user ? '/app/tokens' : '/auth?mode=register')} />
+        </div>
 
         {/* FAQ snippet */}
         <div className="mt-20 max-w-2xl mx-auto border-t border-zinc-800 pt-16">
-          <h3 className="text-lg font-semibold mb-4">How tokens work</h3>
+          <h3 className="text-lg font-semibold mb-4">Clarity & how credits work</h3>
           <p className="text-zinc-500 text-sm leading-relaxed">
-            Each AI build (and modification) uses tokens. One prompt might use a few hundred to a few thousand tokens depending on model and response length. Your balance is shown in the app; when you run low, buy another pack. Unused tokens never expire.
+            Know exactly what you're building. No surprises, no hidden limitations. Plans are monthly (or annual for 17% off). Each build uses credits (1 credit ≈ 1,000 tokens). Unused credits roll over. Add-ons anytime—no limit. Sustainable unit economics (e.g. 92% margin on paid) means we survive and keep improving—unlike VC-funded competitors.
           </p>
         </div>
       </div>

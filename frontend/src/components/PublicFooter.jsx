@@ -21,7 +21,10 @@ export default function PublicFooter() {
         <div className="grid md:grid-cols-4 gap-12 mb-12">
           <div>
             <div className="text-lg font-semibold text-kimi-text mb-4">CrucibAI</div>
-            <p className="text-sm text-kimi-muted">Turn ideas into software. No code required.</p>
+            <p className="text-sm text-kimi-muted mb-3">Turn ideas into software. No code required.</p>
+            <ul className="space-y-2 text-sm">
+              <li><Link to="/about" className="text-kimi-muted hover:text-kimi-text transition">About us</Link></li>
+            </ul>
           </div>
           <div>
             <div className="text-xs text-kimi-muted uppercase tracking-wider mb-4">Product</div>
@@ -30,6 +33,7 @@ export default function PublicFooter() {
               <li><Link to="/pricing" className="text-kimi-muted hover:text-kimi-text transition">Pricing</Link></li>
               <li><Link to="/templates" className="text-kimi-muted hover:text-kimi-text transition">Templates</Link></li>
               <li><Link to="/patterns" className="text-kimi-muted hover:text-kimi-text transition">Patterns</Link></li>
+              <li><Link to="/enterprise" className="text-kimi-muted hover:text-kimi-text transition">Enterprise</Link></li>
             </ul>
           </div>
           <div>
@@ -45,6 +49,9 @@ export default function PublicFooter() {
             <ul className="space-y-3 text-sm">
               <li><Link to="/privacy" className="text-kimi-muted hover:text-kimi-text transition">Privacy</Link></li>
               <li><Link to="/terms" className="text-kimi-muted hover:text-kimi-text transition">Terms</Link></li>
+              <li><Link to="/aup" className="text-kimi-muted hover:text-kimi-text transition">Acceptable Use</Link></li>
+              <li><Link to="/dmca" className="text-kimi-muted hover:text-kimi-text transition">DMCA</Link></li>
+              <li><Link to="/cookies" className="text-kimi-muted hover:text-kimi-text transition">Cookies</Link></li>
             </ul>
           </div>
         </div>
