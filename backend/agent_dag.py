@@ -115,7 +115,24 @@ AGENT_DAG: Dict[str, Dict[str, Any]] = {
     "Form Builder Agent": {"depends_on": ["Frontend Generation"], "system_prompt": "You are a Form Builder Agent. Suggest dynamic form generation. Plain text."},
     "Workflow Agent": {"depends_on": ["Backend Generation"], "system_prompt": "You are a Workflow Agent. Suggest state machine or workflows. Plain text."},
     "Queue Agent": {"depends_on": ["Backend Generation"], "system_prompt": "You are a Queue Agent. Suggest job queues (Bull/Celery). Plain text."},
+    # Phase 5: Vibe & Accessibility Agents (110-115 agents) - NEW
+    "Vibe Analyzer Agent": {"depends_on": ["Design Agent", "Brand Agent"], "system_prompt": "You are a Vibe Analyzer. Analyze the overall 'vibe' of the project: mood, aesthetic, energy level. Output: vibe_name, emotional_tone, visual_energy, code_style. JSON format."},
+    "Voice Context Agent": {"depends_on": ["Planner", "Requirements Clarifier"], "system_prompt": "You are a Voice Context Agent. Convert voice/speech input to code context. Extract intent, emotion, urgency, and technical requirements from natural language. Output structured requirements."},
+    "Video Tutorial Agent": {"depends_on": ["Documentation Agent", "Frontend Generation"], "system_prompt": "You are a Video Tutorial Agent. Generate video tutorial scripts and storyboards. Output: scene descriptions, narration, code highlights, timing. Markdown format."},
+    "Aesthetic Reasoner Agent": {"depends_on": ["Design Agent", "Frontend Generation"], "system_prompt": "You are an Aesthetic Reasoner. Evaluate code and design for beauty, elegance, and visual harmony. Suggest improvements for aesthetic quality. Output: beauty_score (1-10), improvements, reasoning."},
+    "Collaborative Memory Agent": {"depends_on": ["Memory Agent", "Team Preferences"], "system_prompt": "You are a Collaborative Memory Agent. Remember team preferences, past decisions, and project patterns. Output: team_style, preferred_patterns, past_decisions, recommendations."},
+    "Real-time Feedback Agent": {"depends_on": ["Frontend Generation", "Backend Generation"], "system_prompt": "You are a Real-time Feedback Agent. Adapt to user reactions and feedback instantly. Suggest quick improvements based on user sentiment. Output: feedback_analysis, quick_fixes, priority_improvements."},
+    "Mood Detection Agent": {"depends_on": ["Planner"], "system_prompt": "You are a Mood Detection Agent. Detect user mood and intent from interactions. Output: user_mood, confidence_level, recommended_approach, tone_adjustment."},
+    "Accessibility Vibe Agent": {"depends_on": ["Accessibility Agent", "Vibe Analyzer Agent"], "system_prompt": "You are an Accessibility Vibe Agent. Ensure design and code 'feel' accessible and inclusive. Check WCAG compliance while maintaining aesthetic vibe. Output: accessibility_score, vibe_preservation, recommendations."},
+    "Performance Vibe Agent": {"depends_on": ["Performance Analyzer", "Frontend Generation"], "system_prompt": "You are a Performance Vibe Agent. Optimize code to 'feel' fast and responsive. Suggest micro-interactions and loading states. Output: performance_feel_score, micro_interactions, loading_strategies."},
+    "Creativity Catalyst Agent": {"depends_on": ["Design Agent", "Content Agent"], "system_prompt": "You are a Creativity Catalyst Agent. Suggest creative improvements and innovative features. Output: creative_ideas (top 5), implementation_difficulty, innovation_score, wow_factor."},
+    "IDE Integration Coordinator Agent": {"depends_on": ["Frontend Generation", "Backend Generation"], "system_prompt": "You are an IDE Integration Coordinator. Prepare code for IDE extensions. Output: IDE-compatible code, extension hooks, plugin metadata, quick-action suggestions."},
+    "Multi-language Code Agent": {"depends_on": ["Stack Selector"], "system_prompt": "You are a Multi-language Code Agent. Generate code in multiple languages (Python, JavaScript, Go, Rust, etc.). Maintain consistency across languages. Output: language_variants, compatibility_notes."},
+    "Team Collaboration Agent": {"depends_on": ["Collaborative Memory Agent"], "system_prompt": "You are a Team Collaboration Agent. Suggest collaboration workflows, code review processes, and team communication patterns. Output: workflow_suggestions, review_checklist, communication_guidelines."},
+    "User Onboarding Agent": {"depends_on": ["Documentation Agent", "Video Tutorial Agent"], "system_prompt": "You are a User Onboarding Agent. Create comprehensive onboarding experience. Output: quickstart_guide, tutorial_sequence, learning_path, support_resources."},
+    "Customization Engine Agent": {"depends_on": ["Brand Agent", "Vibe Analyzer Agent"], "system_prompt": "You are a Customization Engine Agent. Enable users to customize code/design to their preferences. Output: customization_options, theme_variables, plugin_architecture, extension_points."},
 }
+
 
 # Max chars of previous output to inject (avoid token overflow)
 CONTEXT_MAX_CHARS = 2000
@@ -223,7 +240,23 @@ OPTIMIZED_SYSTEM_PROMPTS: Dict[str, str] = {
     "Form Builder Agent": "Forms. Dynamic.",
     "Workflow Agent": "Workflow. State machine.",
     "Queue Agent": "Queue. Bull/Celery.",
+    "Vibe Analyzer Agent": "Vibe. Mood, aesthetic, energy. JSON: vibe_name, emotional_tone, visual_energy, code_style.",
+    "Voice Context Agent": "Voice. Convert speech to code context. Extract intent, emotion, urgency, requirements.",
+    "Video Tutorial Agent": "Video tutorials. Scripts, storyboards, narration, code highlights, timing.",
+    "Aesthetic Reasoner Agent": "Aesthetics. Beauty, elegance, harmony. Score 1-10, improvements, reasoning.",
+    "Collaborative Memory Agent": "Team memory. Preferences, patterns, decisions, recommendations.",
+    "Real-time Feedback Agent": "Real-time feedback. Adapt to user reactions. Quick fixes, priority improvements.",
+    "Mood Detection Agent": "Mood. User mood, confidence, approach, tone adjustment.",
+    "Accessibility Vibe Agent": "Accessible vibe. WCAG + aesthetic. Score, vibe preservation, recommendations.",
+    "Performance Vibe Agent": "Performance feel. Fast, responsive. Micro-interactions, loading states.",
+    "Creativity Catalyst Agent": "Creativity. Top 5 ideas, difficulty, innovation score, wow factor.",
+    "IDE Integration Coordinator Agent": "IDE coordinator. IDE-compatible code, hooks, metadata, quick actions.",
+    "Multi-language Code Agent": "Multi-language. Python, JS, Go, Rust. Variants, compatibility.",
+    "Team Collaboration Agent": "Team collab. Workflows, code review, communication patterns.",
+    "User Onboarding Agent": "Onboarding. Quickstart, tutorials, learning path, support.",
+    "Customization Engine Agent": "Customization. Options, themes, plugins, extensions.",
 }
+
 
 
 def _use_token_optimized() -> bool:

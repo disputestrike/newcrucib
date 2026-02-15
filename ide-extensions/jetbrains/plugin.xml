@@ -1,0 +1,101 @@
+<idea-plugin>
+  <id>com.crucibai.jetbrains</id>
+  <name>CrucibAI</name>
+  <vendor email="support@crucibai.com" url="https://crucibai.com">CrucibAI</vendor>
+
+  <description><![CDATA[
+    CrucibAI: 115-Agent Autonomous Code Generation for JetBrains IDEs
+    
+    Features:
+    • AI-powered code generation
+    • Vibe-aware code analysis
+    • Voice-to-code conversion
+    • Real-time collaboration
+    • Automatic test generation
+    • Code refactoring
+    • Documentation generation
+    • Multi-language support
+    • Real-time completions
+    • Performance optimization
+  ]]></description>
+
+  <change-notes><![CDATA[
+    <h2>Version 1.0.0</h2>
+    <ul>
+      <li>Initial release with 115-agent autonomous swarm</li>
+      <li>Full IDE integration</li>
+      <li>Vibe coding support</li>
+      <li>Voice input</li>
+      <li>Real-time collaboration</li>
+    </ul>
+  ]]></change-notes>
+
+  <idea-version since-build="223.0" until-build="241.*"/>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+  <depends>com.intellij.modules.vcs</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Language support -->
+    <projectService serviceImplementation="com.crucibai.CrucibAIService"/>
+    <projectConfigurable parentId="tools" instance="com.crucibai.CrucibAIConfigurable" id="com.crucibai.settings" displayName="CrucibAI"/>
+
+    <!-- Code completion -->
+    <completion.contributor language="any" implementationClass="com.crucibai.CrucibAICompletionContributor" order="first"/>
+
+    <!-- Inspections -->
+    <localInspection language="any" shortName="CrucibAIInspection" displayName="CrucibAI Code Quality" groupName="CrucibAI" enabledByDefault="true" implementationClass="com.crucibai.CrucibAIInspection"/>
+
+    <!-- Intentions -->
+    <intentionAction>
+      <className>com.crucibai.intentions.GenerateCodeIntention</className>
+      <category>CrucibAI</category>
+    </intentionAction>
+    <intentionAction>
+      <className>com.crucibai.intentions.QuickFixIntention</className>
+      <category>CrucibAI</category>
+    </intentionAction>
+    <intentionAction>
+      <className>com.crucibai.intentions.RefactorIntention</className>
+      <category>CrucibAI</category>
+    </intentionAction>
+    <intentionAction>
+      <className>com.crucibai.intentions.GenerateTestsIntention</className>
+      <category>CrucibAI</category>
+    </intentionAction>
+
+    <!-- Gutter icons -->
+    <codeInsight.lineMarkerProvider language="any" implementationClass="com.crucibai.CrucibAILineMarkerProvider"/>
+
+    <!-- Tool window -->
+    <toolWindow id="CrucibAI" anchor="right" icon="AllIcons.General.Information" factoryClass="com.crucibai.CrucibAIToolWindowFactory"/>
+
+    <!-- Listeners -->
+    <projectService serviceImplementation="com.crucibai.listeners.EditorListener"/>
+  </extensions>
+
+  <actions>
+    <group id="CrucibAI.Menu" text="CrucibAI" popup="true">
+      <action id="CrucibAI.GenerateCode" class="com.crucibai.actions.GenerateCodeAction" text="Generate Code" description="Generate code using AI" icon="AllIcons.General.Add"/>
+      <action id="CrucibAI.QuickFix" class="com.crucibai.actions.QuickFixAction" text="Quick Fix" description="Fix code issues" icon="AllIcons.General.Error"/>
+      <action id="CrucibAI.AnalyzeVibe" class="com.crucibai.actions.AnalyzeVibeAction" text="Analyze Vibe" description="Analyze code vibe" icon="AllIcons.General.Palette"/>
+      <action id="CrucibAI.VoiceInput" class="com.crucibai.actions.VoiceInputAction" text="Voice Input" description="Input code via voice" icon="AllIcons.General.Microphone"/>
+      <action id="CrucibAI.GenerateTests" class="com.crucibai.actions.GenerateTestsAction" text="Generate Tests" description="Generate test code" icon="AllIcons.General.Beaker"/>
+      <action id="CrucibAI.Refactor" class="com.crucibai.actions.RefactorAction" text="Refactor" description="Refactor code" icon="AllIcons.General.Refresh"/>
+      <action id="CrucibAI.GenerateDocs" class="com.crucibai.actions.GenerateDocsAction" text="Generate Docs" description="Generate documentation" icon="AllIcons.General.Book"/>
+      <separator/>
+      <action id="CrucibAI.Settings" class="com.crucibai.actions.SettingsAction" text="Settings" description="CrucibAI Settings" icon="AllIcons.General.Gear"/>
+    </group>
+
+    <group id="EditorPopupMenu.CrucibAI">
+      <reference ref="CrucibAI.Menu"/>
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+    </group>
+
+    <group id="ProjectViewPopupMenu.CrucibAI">
+      <reference ref="CrucibAI.Menu"/>
+      <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+    </group>
+  </actions>
+</idea-plugin>

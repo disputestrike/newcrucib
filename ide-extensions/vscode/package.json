@@ -1,0 +1,230 @@
+{
+  "name": "crucibai",
+  "displayName": "CrucibAI - Autonomous Code Generation",
+  "description": "115-agent autonomous AI code generation with vibe coding, voice input, and real-time collaboration",
+  "version": "1.0.0",
+  "publisher": "CrucibAI",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "AI",
+    "Code Generation",
+    "Productivity"
+  ],
+  "keywords": [
+    "ai",
+    "code-generation",
+    "autonomous",
+    "vibe-coding",
+    "voice",
+    "collaboration"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "crucibai.generateCode",
+        "title": "CrucibAI: Generate Code",
+        "category": "CrucibAI",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "crucibai.quickFix",
+        "title": "CrucibAI: Quick Fix",
+        "category": "CrucibAI",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "crucibai.analyzeVibe",
+        "title": "CrucibAI: Analyze Vibe",
+        "category": "CrucibAI",
+        "icon": "$(palette)"
+      },
+      {
+        "command": "crucibai.voiceInput",
+        "title": "CrucibAI: Voice Input",
+        "category": "CrucibAI",
+        "icon": "$(mic)"
+      },
+      {
+        "command": "crucibai.generateTests",
+        "title": "CrucibAI: Generate Tests",
+        "category": "CrucibAI",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "crucibai.refactor",
+        "title": "CrucibAI: Refactor Code",
+        "category": "CrucibAI",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "crucibai.generateDocs",
+        "title": "CrucibAI: Generate Documentation",
+        "category": "CrucibAI",
+        "icon": "$(book)"
+      },
+      {
+        "command": "crucibai.showStatus",
+        "title": "CrucibAI: Show Status",
+        "category": "CrucibAI"
+      },
+      {
+        "command": "crucibai.settings",
+        "title": "CrucibAI: Settings",
+        "category": "CrucibAI",
+        "icon": "$(gear)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "crucibai.generateCode",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "crucibai.quickFix",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "crucibai.voiceInput",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "crucibai.generateTests",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "crucibai.generateCode",
+          "group": "crucibai@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.quickFix",
+          "group": "crucibai@2",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.analyzeVibe",
+          "group": "crucibai@3",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.voiceInput",
+          "group": "crucibai@4",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.generateTests",
+          "group": "crucibai@5",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.refactor",
+          "group": "crucibai@6",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "crucibai.generateDocs",
+          "group": "crucibai@7",
+          "when": "editorTextFocus"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "crucibai.generateCode"
+        },
+        {
+          "command": "crucibai.quickFix"
+        },
+        {
+          "command": "crucibai.analyzeVibe"
+        },
+        {
+          "command": "crucibai.voiceInput"
+        },
+        {
+          "command": "crucibai.generateTests"
+        },
+        {
+          "command": "crucibai.refactor"
+        },
+        {
+          "command": "crucibai.generateDocs"
+        },
+        {
+          "command": "crucibai.showStatus"
+        },
+        {
+          "command": "crucibai.settings"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CrucibAI",
+      "properties": {
+        "crucibai.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "CrucibAI API URL"
+        },
+        "crucibai.apiKey": {
+          "type": "string",
+          "description": "CrucibAI API Key"
+        },
+        "crucibai.autoAnalyze": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-analyze code on save"
+        },
+        "crucibai.enableVoice": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable voice input"
+        },
+        "crucibai.enableVibe": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable vibe analysis"
+        },
+        "crucibai.language": {
+          "type": "string",
+          "enum": ["en", "es", "fr", "de", "ja", "zh"],
+          "default": "en",
+          "description": "UI language"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "vscode": "^1.1.37"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "node ./test/runTest.js"
+  }
+}
