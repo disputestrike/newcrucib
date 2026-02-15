@@ -71,7 +71,11 @@ app = FastAPI(title="CrucibAI Platform")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
-JWT_SECRET = os.environ.get('JWT_SECRET', 'crucibai-secret-key-2024')
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    logger.warning("JWT_SECRET not set in environment. Using a temporary secret for this session.")
+    import secrets
+    JWT_SECRET = secrets.token_urlsafe(32)
 JWT_ALGORITHM = "HS256"
 LLM_API_KEY = os.environ.get('OPENAI_API_KEY') or os.environ.get('LLM_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -173,9 +177,6 @@ class ExplainErrorBody(BaseModel):
 class SuggestNextBody(BaseModel):
     files: Dict[str, str]
     last_prompt: Optional[str] = None
-
-class QualityGateBody(BaseModel):
-    code: str
 
 class InjectStripeBody(BaseModel):
     code: str
@@ -525,10 +526,14 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
+        # bcrypt.checkpw expects bytes for both arguments
         if bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8")):
             return True
-    except Exception:
-        pass
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Bcrypt verification failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during password verification: {e}")
+    
     # Legacy: SHA-256 hashes (64-char hex)
     if len(hashed) == 64 and all(c in "0123456789abcdef" for c in hashed.lower()):
         import hashlib
@@ -574,7 +579,8 @@ async def _check_api_key_db(api_key: str) -> bool:
     try:
         row = await db.api_keys.find_one({"key": api_key, "active": True})
         return row is not None
-    except Exception:
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.debug(f"Error checking API key: {e}")
         return False
 
 async def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security), request: Request = None):
@@ -585,8 +591,10 @@ async def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(
             user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
             if user:
                 return user
-        except Exception:
-            pass
+        except (jwt.InvalidTokenError, jwt.DecodeError, KeyError) as e:
+            logger.debug(f"Invalid JWT token: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in JWT verification: {e}")
     if request:
         api_key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
         if api_key and (api_key in PUBLIC_API_KEYS or await _check_api_key_db(api_key)):
@@ -1796,8 +1804,10 @@ async def auth_google_callback(request: Request, code: Optional[str] = None, sta
             decoded = b64.urlsafe_b64decode(state.encode()).decode()
             obj = json.loads(decoded)
             redirect_path = obj.get("redirect") or ""
-        except Exception:
-            pass
+        except (jwt.InvalidTokenError, jwt.DecodeError, KeyError) as e:
+            logger.debug(f"Invalid JWT token: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in JWT verification: {e}")
     target = f"{FRONTEND_URL}/auth?token={token}"
     if redirect_path and redirect_path.startswith("/"):
         target += f"&redirect={quote(redirect_path)}"
@@ -2565,8 +2575,10 @@ async def one_click_deploy_vercel(
         msg = r.text
         try:
             msg = r.json().get("error", {}).get("message", r.text)
-        except Exception:
-            pass
+        except (jwt.InvalidTokenError, jwt.DecodeError, KeyError) as e:
+            logger.debug(f"Invalid JWT token: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in JWT verification: {e}")
         raise HTTPException(status_code=502, detail=f"Vercel deploy failed: {msg}")
     data = r.json()
     url = data.get("url") or (data.get("alias", [""])[0] if data.get("alias") else "")
@@ -2620,8 +2632,10 @@ async def one_click_deploy_netlify(
         msg = r.text
         try:
             msg = r.json().get("message", r.text)
-        except Exception:
-            pass
+        except (jwt.InvalidTokenError, jwt.DecodeError, KeyError) as e:
+            logger.debug(f"Invalid JWT token: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in JWT verification: {e}")
         raise HTTPException(status_code=502, detail=f"Netlify deploy failed: {msg}")
     data = r.json()
     url = data.get("ssl_url") or data.get("url") or ""

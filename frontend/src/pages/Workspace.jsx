@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { useAuth, API } from '../App';
 import axios from 'axios';
+import ManusComputer from '../components/ManusComputer';
 
 // Default React app template
 const DEFAULT_FILES = {
@@ -1107,6 +1108,15 @@ Respond with ONLY the complete App.js code, nothing else.`;
 
   return (
     <div className="h-screen bg-[#FAF9F7] text-gray-900 flex flex-col overflow-hidden font-sans text-[13px] antialiased">
+      {/* Manus Computer Widget */}
+      <ManusComputer 
+        currentStep={versions.length > 0 ? Math.min(versions.length, 7) : 0}
+        totalSteps={7}
+        thinking={isBuilding ? "Analyzing your request and generating code..." : ""}
+        tokensUsed={versions.length * 1000}
+        tokensTotal={50000}
+        isActive={isBuilding || versions.length > 0}
+      />
       {/* Command palette (Ctrl+K / Cmd+K) */}
       {commandPaletteOpen && (
         <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm" onClick={() => setCommandPaletteOpen(false)}>
