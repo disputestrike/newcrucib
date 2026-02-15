@@ -3,6 +3,41 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, Response, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from middleware import (
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+    RequestTrackerMiddleware,
+    RequestValidationMiddleware,
+    PerformanceMonitoringMiddleware
+)
+from error_handlers import (
+    CrucibError,
+    ValidationError,
+    AuthenticationError,
+    DatabaseError,
+    ExternalServiceError,
+    log_error,
+    to_http_exception
+)
+from validators import (
+    UserRegisterValidator,
+    UserLoginValidator,
+    ChatMessageValidator,
+    ProjectCreateValidator,
+    BuildPlanRequestValidator,
+    validate_email,
+    validate_password_strength
+)
+from structured_logging import (
+    get_request_logger,
+    get_error_logger,
+    get_performance_logger,
+    get_audit_logger,
+    log_performance,
+    log_audit
+)
+from api_docs_generator import generate_api_docs
+from endpoint_wrapper import wrap_all_endpoints, safe_endpoint
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -4286,12 +4321,18 @@ async def websocket_project_progress(websocket: WebSocket, project_id: str):
     except WebSocketDisconnect:
         pass
 
+# Add security and performance middleware (order matters - added in reverse)
+app.add_middleware(PerformanceMonitoringMiddleware)
+app.add_middleware(RequestValidationMiddleware)
+app.add_middleware(RequestTrackerMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Request-ID"],
 )
 
 @app.on_event("startup")

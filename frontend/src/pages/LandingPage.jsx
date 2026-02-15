@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Send, Loader2, ArrowRight, Check, Menu, X, Play, ArrowUpRight, Paperclip, Image, FileText, Mic, MicOff, FileCode, GitFork } from 'lucide-react';
 import { useAuth, API } from '../App';
+import { VoiceInput } from '../components/VoiceInput';
 import axios from 'axios';
 
 const LandingPage = () => {
@@ -20,9 +21,7 @@ const LandingPage = () => {
   const [generatedCode, setGeneratedCode] = useState(null);
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const [attachedFiles, setAttachedFiles] = useState([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [voiceError, setVoiceError] = useState(null);
+  const [voiceLanguage, setVoiceLanguage] = useState('en');
   const [liveExamples, setLiveExamples] = useState([]);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -67,80 +66,8 @@ const LandingPage = () => {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const startVoiceRecording = async () => {
-    setVoiceError(null);
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setVoiceError('Microphone not supported in this browser.');
-        return;
-      }
-      if (typeof MediaRecorder === 'undefined') {
-        setVoiceError('Voice recording not supported in this browser. Try Chrome or Firefox.');
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
-      const mimeType = mimeTypes.find(mt => MediaRecorder.isTypeSupported(mt)) || 'audio/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        setIsRecording(false);
-        setIsTranscribing(true);
-        setVoiceError(null);
-        const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
-        if (blob.size < 100) {
-          setIsTranscribing(false);
-          setVoiceError('Recording too short. Speak for at least a second.');
-          return;
-        }
-        const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
-        const formData = new FormData();
-        formData.append('audio', blob, `recording.${ext}`);
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        try {
-          const res = await axios.post(`${API}/voice/transcribe`, formData, {
-            headers: { ...headers },
-            timeout: 30000,
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          });
-          const text = res.data?.text?.trim();
-          if (text) {
-            setInput(prev => (prev ? prev + ' ' : '') + text);
-            setVoiceError(null);
-          } else {
-            setVoiceError('No text heard. Try again.');
-          }
-        } catch (err) {
-          setVoiceError(err.response?.data?.detail || err.message || 'Transcription failed.');
-        } finally {
-          setIsTranscribing(false);
-        }
-      };
-      recorder.start(1000);
-      mediaRecorderRef.current = { recorder, stream };
-      setIsRecording(true);
-    } catch (err) {
-      setIsRecording(false);
-      setVoiceError(err.name === 'NotAllowedError' ? 'Microphone access denied.' : 'Could not start microphone.');
-    }
-  };
-
-  const stopVoiceRecording = () => {
-    const ref = mediaRecorderRef.current;
-    if (ref?.recorder?.state === 'recording') {
-      try {
-        ref.recorder.requestData();
-      } catch (_) {}
-      ref.recorder.stop();
-    }
-    if (ref?.stream) {
-      ref.stream.getTracks().forEach(t => t.stop());
-    }
-    mediaRecorderRef.current = null;
-    if (ref?.recorder?.state !== 'recording') setIsRecording(false);
+  const handleVoiceTranscribed = (text) => {
+    setInput(prev => (prev ? prev + ' ' : '') + text);
   };
 
   const handleSubmit = (e) => {
