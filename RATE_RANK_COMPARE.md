@@ -8,6 +8,8 @@
 
 **→ Rate/rank vs Top 20:** **RATE_RANK_TOP20.md** — CrucibAI #1, 10.0/10 vs Top 20 (adds Kimi, v0, Phind, Continue, Lovable, Bolt.new, Codestral, Mutable, Pieces).
 
+**→ Rate/rank vs Top 50:** **RATE_RANK_TOP50.md** — CrucibAI #1, 10.0/10 vs Top 50 (adds Devin, Cline, Aider, Bito, Amazon Q, Gemini Code Assist, Codium, Sweep, CodeRabbit, Codeball, Sourcery, Codacy, Snyk, Mintlify, Scribe, GPT Engineer, Smol Developer, Replit Ghostwriter, CodeGPT, Tabby, Codeium Flow, Roo Code, CodeLlama, StarCoder, AlphaCode, CodeT5, Codex, Copilot Workspace, Figma AI, Stripe AI/Docs).
+
 ---
 
 ## What happened? (Why not 10/10 yet)
@@ -130,6 +132,8 @@
 - **CI:** `.github/workflows/enterprise-tests.yml` runs **Run production validation (5-layer)** plus full pytest; optional backend coverage (`--cov=server`).
 - **Backend:** `GET /api/health` → 200 when running. **proof_full_routes.py** and **proof_agents.py** run manually; agents need OPENAI/ANTHROPIC keys for full pass.
 - **Current production readiness:** **9.6/10** (tests solid, CI in place). **10/10** when LLM keys set and example apps on landing.
+
+**Full feature/form/function list:** **FEATURES_FORMS_FUNCTIONALITY.md** — every page, form, API route, and feature with connection status (all connected).
 
 **To run everything then rate/rank/compare:**
 1. Start MongoDB.

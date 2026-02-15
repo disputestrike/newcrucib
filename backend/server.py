@@ -174,6 +174,9 @@ class SuggestNextBody(BaseModel):
     files: Dict[str, str]
     last_prompt: Optional[str] = None
 
+class QualityGateBody(BaseModel):
+    code: str
+
 class InjectStripeBody(BaseModel):
     code: str
     target: Optional[str] = "checkout"  # checkout | subscription | both
@@ -3961,6 +3964,13 @@ async def build_from_reference(data: ReferenceBuildBody, user: dict = Depends(ge
     response, model_used = await _call_llm_with_fallback(message=prompt, system_message="You output only valid React/JSX code. No markdown.", session_id=str(uuid.uuid4()), model_chain=model_chain, api_keys=effective)
     code = (response or "").strip().removeprefix("```jsx").removeprefix("```js").removeprefix("```").removesuffix("```").strip()
     return {"code": code, "model_used": model_used}
+
+@api_router.post("/ai/quality-gate")
+async def quality_gate(data: QualityGateBody):
+    """Run code quality score on a single code snippet (frontend or backend). No auth required for UI feedback."""
+    # Treat code as frontend for scoring; backend/db/test empty so we get a single-snippet score
+    result = score_generated_code(frontend_code=data.code or "", backend_code="", database_schema="", test_code="")
+    return result
 
 @api_router.post("/ai/explain-error")
 async def explain_error(data: ExplainErrorBody, user: dict = Depends(get_optional_user)):
