@@ -4296,17 +4296,27 @@ async def run_speed_benchmark(request: dict, user: dict = Depends(get_optional_u
         "prompts": ["Build a todo app", ...],  # Optional
         "iterations": 1
     }
+    
+    Note: This endpoint uses a simplified orchestrator for demonstration.
+    For production use, integrate with your actual orchestration system.
     """
     try:
         # Create a simple orchestrator function
+        # TODO: Replace with actual orchestration integration
         async def simple_orchestrator(prompt: str) -> dict:
-            """Simple orchestrator for benchmarking"""
+            """Simple orchestrator for benchmarking - placeholder implementation"""
             # This is a placeholder that simulates the orchestration
-            # In a real scenario, you'd use the actual orchestration system
+            # In production, replace this with actual orchestration call:
+            # return await run_orchestration_with_dag(project_id, user_id)
+            import time
+            start = time.time()
+            await asyncio.sleep(0.1)  # Simulate work
+            duration = time.time() - start
+            
             return {
                 "success": True,
                 "metrics": {
-                    "tokens": {"total": 5000}
+                    "tokens": {"total": int(5000 + duration * 1000)}  # Vary by duration
                 },
                 "summary": {
                     "files_generated": 5

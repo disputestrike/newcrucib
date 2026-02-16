@@ -91,10 +91,16 @@ class ComparisonReport:
             advantages = []
             if speedup > 1:
                 advantages.append(f"{speedup:.1f}× faster")
-            else:
-                advantages.append("Slower")
+            elif speedup < 1 and speedup > 0:
+                # We are slower - this is a disadvantage
+                pass  # Don't add to advantages list
             
-            advantages.append(f"{our_success - comp_data['success_rate']:+.0f}% better success rate")
+            success_diff = our_success - comp_data['success_rate']
+            if success_diff > 0:
+                advantages.append(f"{success_diff:+.0f}% better success rate")
+            elif success_diff < 0:
+                # Our success rate is lower - disadvantage
+                pass  # Don't add to advantages list
             
             if not comp_data["quality_scoring"]:
                 advantages.append(f"Quality scoring ({our_quality:.0f}/100)")

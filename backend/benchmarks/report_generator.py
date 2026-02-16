@@ -233,7 +233,7 @@ class ReportGenerator:
             <div class="metric-value">{overall.get('market_position', 'N/A')}</div>
         </div>
         <div class="metric">
-            <div class="metric-label">Claim Validated</div>
+            <div class="metric-label">Speedup Claim Validated</div>
             <div class="metric-value {'success' if overall.get('claim_validated') else 'warning'}">
                 {'✅ Yes' if overall.get('claim_validated') else '⚠️ No'}
             </div>
@@ -392,7 +392,7 @@ Generated: {timestamp}
 
 - **Average Speedup:** {overall.get('avg_speedup', 0):.2f}×
 - **Market Position:** {overall.get('market_position', 'N/A')}
-- **3.0× Claim Validated:** {'✅ Yes' if overall.get('claim_validated') else '⚠️ No'}
+- **Speedup Claim Validated:** {'✅ Yes' if overall.get('claim_validated') else '⚠️ No'}
 
 ### Detailed Comparisons
 
