@@ -156,17 +156,71 @@ class TimeoutError(CrucibError):
             recoverable=True
         )
 
+def redact_sensitive_data(data: Any, max_traceback_lines: int = 20) -> Any:
+    """
+    Redact sensitive information from data before logging
+    
+    Args:
+        data: Data to redact (dict, string, or other)
+        max_traceback_lines: Maximum number of traceback lines to include
+        
+    Returns:
+        Redacted data with sensitive fields masked
+    """
+    # Sensitive field patterns (case-insensitive)
+    sensitive_patterns = {
+        'password', 'passwd', 'pwd',
+        'api_key', 'apikey', 'api-key',
+        'secret', 'token', 'bearer',
+        'authorization', 'auth',
+        'access_token', 'refresh_token',
+        'private_key', 'privatekey',
+        'credential', 'credentials'
+    }
+    
+    if isinstance(data, dict):
+        redacted = {}
+        for key, value in data.items():
+            key_lower = str(key).lower()
+            # Check if key contains sensitive patterns
+            if any(pattern in key_lower for pattern in sensitive_patterns):
+                redacted[key] = "***REDACTED***"
+            # Special handling for traceback - truncate to prevent info disclosure
+            elif key == "traceback" and isinstance(value, str):
+                lines = value.split('\n')
+                if len(lines) > max_traceback_lines:
+                    redacted[key] = '\n'.join(lines[:max_traceback_lines]) + f"\n... (truncated {len(lines) - max_traceback_lines} lines)"
+                else:
+                    redacted[key] = value
+            elif isinstance(value, (dict, list)):
+                redacted[key] = redact_sensitive_data(value, max_traceback_lines)
+            else:
+                redacted[key] = value
+        return redacted
+    elif isinstance(data, list):
+        return [redact_sensitive_data(item, max_traceback_lines) for item in data]
+    elif isinstance(data, str):
+        # Redact authorization headers in strings
+        import re
+        # Redact Bearer tokens
+        data = re.sub(r'Bearer\s+[A-Za-z0-9_\-\.]+', 'Bearer ***REDACTED***', data, flags=re.IGNORECASE)
+        # Redact API keys in format api_key=xxx or apiKey=xxx
+        data = re.sub(r'api[_-]?key\s*[:=]\s*["\']?[A-Za-z0-9_\-\.]+["\']?', 'api_key=***REDACTED***', data, flags=re.IGNORECASE)
+        return data
+    else:
+        return data
+
 def log_error(
     error: Exception,
     context: Optional[Dict[str, Any]] = None,
     user_id: Optional[str] = None
 ) -> None:
     """
-    Log error with full context and traceback
+    Log error with redacted context and traceback
     
     Args:
         error: The exception to log
-        context: Additional context information
+        context: Additional context information (will be redacted)
         user_id: User ID for audit trail
     """
     error_info = {
@@ -177,17 +231,20 @@ def log_error(
         **({"user_id": user_id} if user_id else {})
     }
     
+    # Redact sensitive data before logging
+    redacted_error_info = redact_sensitive_data(error_info)
+    
     if isinstance(error, CrucibError):
         if error.severity == ErrorSeverity.CRITICAL:
-            logger.critical(f"CRITICAL ERROR: {error_info}")
+            logger.critical(f"CRITICAL ERROR: {redacted_error_info}")
         elif error.severity == ErrorSeverity.HIGH:
-            logger.error(f"HIGH SEVERITY ERROR: {error_info}")
+            logger.error(f"HIGH SEVERITY ERROR: {redacted_error_info}")
         elif error.severity == ErrorSeverity.MEDIUM:
-            logger.warning(f"MEDIUM SEVERITY ERROR: {error_info}")
+            logger.warning(f"MEDIUM SEVERITY ERROR: {redacted_error_info}")
         else:
-            logger.info(f"LOW SEVERITY ERROR: {error_info}")
+            logger.info(f"LOW SEVERITY ERROR: {redacted_error_info}")
     else:
-        logger.error(f"UNEXPECTED ERROR: {error_info}")
+        logger.error(f"UNEXPECTED ERROR: {redacted_error_info}")
 
 async def retry_with_backoff(
     func: Callable,

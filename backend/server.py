@@ -81,12 +81,21 @@ except ImportError:
 import hashlib
 import pyotp
 import qrcode
+from encryption import encrypt_dict, decrypt_dict
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+# Configure MongoDB connection pool for better performance and reliability
+client = AsyncIOMotorClient(
+    mongo_url,
+    maxPoolSize=50,
+    minPoolSize=10,
+    serverSelectionTimeoutMS=5000,
+    socketTimeoutMS=5000,
+    retryWrites=True
+)
 db = client[os.environ['DB_NAME']]
 audit_logger = AuditLogger(db) if AuditLogger else None
 
@@ -102,22 +111,23 @@ def decode_mfa_temp_token(token: str) -> dict:
         raise jwt.InvalidTokenError("Invalid purpose")
     return payload
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="CrucibAI Platform")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
+# JWT_SECRET must be configured - fail fast if missing
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
-    logger.warning("JWT_SECRET not set in environment. Using a temporary secret for this session.")
-    import secrets
-    JWT_SECRET = secrets.token_urlsafe(32)
+    logger.critical("JWT_SECRET environment variable is not set. This is required for authentication.")
+    raise ValueError("JWT_SECRET must be configured in environment variables. Set JWT_SECRET to a secure random string.")
+
 JWT_ALGORITHM = "HS256"
 LLM_API_KEY = os.environ.get('OPENAI_API_KEY') or os.environ.get('LLM_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================
 
@@ -695,14 +705,16 @@ def _get_model_chain(model_key: str, message: str, effective_keys: Optional[Dict
 
 
 async def get_workspace_api_keys(user: Optional[dict]) -> Dict[str, Optional[str]]:
-    """Load OpenAI/Anthropic from user's Settings (workspace_env). Returns raw keys from DB."""
+    """Load OpenAI/Anthropic from user's Settings (workspace_env). Returns decrypted keys from DB."""
     if not user:
         return {}
     row = await db.workspace_env.find_one({"user_id": user["id"]}, {"_id": 0})
     env = (row.get("env", {}) if row else {})
+    # Decrypt sensitive fields
+    decrypted_env = decrypt_dict(env)
     return {
-        "openai": (env.get("OPENAI_API_KEY") or "").strip() or None,
-        "anthropic": (env.get("ANTHROPIC_API_KEY") or "").strip() or None,
+        "openai": (decrypted_env.get("OPENAI_API_KEY") or "").strip() or None,
+        "anthropic": (decrypted_env.get("ANTHROPIC_API_KEY") or "").strip() or None,
     }
 
 
@@ -4108,14 +4120,31 @@ async def generate_faq_schema(data: GenerateFaqSchemaBody, user: dict = Depends(
 
 @api_router.get("/workspace/env")
 async def get_workspace_env(user: dict = Depends(get_optional_user)):
+    """Get user's workspace environment variables with decrypted sensitive values"""
     if not user:
         return {"env": {}}
     row = await db.workspace_env.find_one({"user_id": user["id"]}, {"_id": 0})
-    return {"env": row.get("env", {}) if row else {}}
+    env_data = row.get("env", {}) if row else {}
+    # Decrypt sensitive fields before returning
+    decrypted_env = decrypt_dict(env_data)
+    return {"env": decrypted_env}
 
 @api_router.post("/workspace/env")
 async def set_workspace_env(data: ProjectEnvBody, user: dict = Depends(get_current_user)):
-    await db.workspace_env.update_one({"user_id": user["id"]}, {"$set": {"user_id": user["id"], "env": data.env, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    """Set user's workspace environment variables with encrypted sensitive values"""
+    # Encrypt sensitive fields before storing
+    encrypted_env = encrypt_dict(data.env)
+    await db.workspace_env.update_one(
+        {"user_id": user["id"]},
+        {
+            "$set": {
+                "user_id": user["id"],
+                "env": encrypted_env,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        },
+        upsert=True
+    )
     return {"ok": True}
 
 @api_router.post("/projects/{project_id}/duplicate")
@@ -4327,10 +4356,23 @@ app.add_middleware(RequestValidationMiddleware)
 app.add_middleware(RequestTrackerMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
+
+# CORS configuration - restrict origins for security
+cors_origins_env = os.environ.get('CORS_ORIGINS', 'http://localhost:3000')
+cors_origins = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
+
+# Warn if using localhost in production
+if any('localhost' in origin or '127.0.0.1' in origin for origin in cors_origins):
+    logger.warning(
+        "CORS configured with localhost origins. "
+        "This should only be used in development. "
+        "Set CORS_ORIGINS environment variable with production origins."
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=cors_origins,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Request-ID"],
 )
