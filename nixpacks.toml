@@ -3,19 +3,23 @@
 nixpkgs.python = "3.11"
 nixpkgs.nodejs = "18"
 
-# Install Python dependencies
+# Setup phase runs FIRST - install dependencies
 [phases.setup]
 cmds = [
   "pip install -r backend/requirements.txt",
   "cd frontend && npm install && cd .."
 ]
 
-# Build frontend
+# Install phase - additional setup if needed
+[phases.install]
+cmds = []
+
+# Build phase runs AFTER setup - build frontend
 [phases.build]
 cmds = [
   "cd frontend && npm run build && cd .."
 ]
 
-# Start backend (which serves frontend)
+# Start command - run Python backend
 [start]
 cmd = "python backend/server.py"
