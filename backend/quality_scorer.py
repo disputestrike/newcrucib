@@ -227,10 +227,14 @@ class QualityScorer:
                 functions = re.findall(r'def\s+\w+', content)
                 total_functions += len(functions)
                 
-                # Count functions with docstrings
-                function_blocks = re.findall(r'def\s+\w+[^:]*:\s*"""', content)
-                function_blocks += re.findall(r"def\s+\w+[^:]*:\s*'''", content)
-                documented_functions += len(function_blocks)
+                # Count all docstrings (""" or ''')
+                docstring_count = len(re.findall(r'"""', content)) // 2  # Pairs of """
+                docstring_count += len(re.findall(r"'''", content)) // 2  # Pairs of '''
+                
+                # Assume module docstring + function docstrings
+                # Give credit for having docstrings even if not every function has one
+                if docstring_count > 0:
+                    documented_functions += min(docstring_count, total_functions)
                 
             elif file_path.endswith(('.js', '.ts', '.jsx', '.tsx')):
                 # JSDoc comments
