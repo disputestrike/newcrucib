@@ -101,8 +101,16 @@ class SyntaxValidator:
             errors.append("Unmatched square brackets")
         
         # Check for common syntax patterns
-        if 'import' in code and 'from' not in code and 'require' not in code:
-            # Check if it's ES6 imports without from
+        # Check for ES6 default imports (import X from 'Y') - these are valid
+        has_import_from = re.search(r'import\s+\w+\s+from\s+["\']', code)
+        # Check for named imports (import { X } from 'Y') - these are valid
+        has_named_import = re.search(r'import\s+\{[^}]+\}\s+from\s+["\']', code)
+        # Check for require statements (const X = require('Y')) - these are valid
+        has_require = 'require(' in code
+        
+        # Only flag as error if we have import without any of the valid patterns
+        if 'import' in code and not (has_import_from or has_named_import or has_require):
+            # Check if it's a bare import statement without proper syntax
             if re.search(r'import\s+\w+\s*;', code):
                 errors.append("Import statement missing 'from' clause")
         

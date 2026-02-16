@@ -7,6 +7,7 @@ import asyncio
 import tempfile
 import os
 import shutil
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
@@ -78,9 +79,16 @@ class CodeExecutor:
                 if filepath.endswith(('.tsx', '.ts', '.jsx', '.js')):
                     # Basic syntax check
                     try:
-                        # Check for common syntax errors
-                        if 'import' in content and 'from' not in content:
-                            errors.append(f"{filepath}: Import statement missing 'from'")
+                        # Check for ES6 default imports (import X from 'Y') - these are valid
+                        has_import_from = re.search(r'import\s+\w+\s+from\s+["\']', content)
+                        # Check for named imports (import { X } from 'Y') - these are valid  
+                        has_named_import = re.search(r'import\s+\{[^}]+\}\s+from\s+["\']', content)
+                        
+                        # Only flag as error if we have import without any of the valid patterns
+                        if 'import' in content and not (has_import_from or has_named_import):
+                            # Check if it's a bare import statement without proper syntax
+                            if re.search(r'import\s+\w+\s*;', content):
+                                errors.append(f"{filepath}: Import statement missing 'from'")
                         
                         # Check for unmatched brackets
                         if content.count('{') != content.count('}'):

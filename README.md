@@ -23,7 +23,7 @@ curl -X POST http://localhost:8000/api/generate/v2 \
   -d '{
     "prompt": "Build a todo app with React and FastAPI",
     "workflow": "full_stack",
-    "validate": true,
+    "validate_code": true,
     "score_quality": true
   }'
 ```

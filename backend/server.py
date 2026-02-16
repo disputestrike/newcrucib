@@ -309,7 +309,7 @@ class GenerationRequest(BaseModel):
     """Request model for V2 generation endpoint"""
     prompt: str
     workflow: Optional[Union[str, List[str]]] = "full_stack"
-    validate: Optional[bool] = True
+    validate_code: Optional[bool] = True
     run_tests: Optional[bool] = False
     score_quality: Optional[bool] = True
 
@@ -4429,14 +4429,14 @@ async def generate_app_v2(request: GenerationRequest):
     {
         "prompt": "Build a todo app",
         "workflow": "full_stack" | ["PlannerAgent", "FrontendAgent", ...],
-        "validate": true,
+        "validate_code": true,
         "run_tests": false,
         "score_quality": true
     }
     """
     try:
         workflow = request.workflow if hasattr(request, 'workflow') and request.workflow else "full_stack"
-        validate = getattr(request, 'validate', True)
+        validate = getattr(request, 'validate_code', True)
         run_tests = getattr(request, 'run_tests', False)
         score_quality = getattr(request, 'score_quality', True)
         

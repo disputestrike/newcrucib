@@ -6,6 +6,7 @@ Provides a central registry for all V2 agents with metadata and instantiation.
 from typing import Dict, List, Any, Type, Optional
 from abc import ABC, abstractmethod
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,3 @@ class AgentRegistry:
     def get_agent_names(cls) -> List[str]:
         """Get list of all registered agent names"""
         return list(cls._agents.keys())
-
-
-import asyncio
