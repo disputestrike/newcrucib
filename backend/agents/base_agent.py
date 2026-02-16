@@ -14,6 +14,9 @@ from error_handlers import CrucibError, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 
+# Token estimation multiplier (approximation: words * 1.3 accounts for subword tokenization)
+TOKEN_ESTIMATION_MULTIPLIER = 1.3
+
 
 @dataclass
 class AgentMetrics:
@@ -264,8 +267,8 @@ class BaseAgent(ABC):
 
         # Track metrics
         self._metrics.llm_calls += 1
-        # Estimate tokens (rough approximation: words * 1.3)
-        tokens = int((len(prompt.split()) + len(response.split())) * 1.3)
+        # Estimate tokens using approximation multiplier
+        tokens = int((len(prompt.split()) + len(response.split())) * TOKEN_ESTIMATION_MULTIPLIER)
         self._metrics.tokens_used += tokens
 
         logger.info(f"Agent {self.name} called LLM ({model_used}), ~{tokens} tokens")

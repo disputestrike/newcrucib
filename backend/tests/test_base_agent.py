@@ -191,7 +191,8 @@ class TestBaseAgent:
         original_execute = simple_agent.execute
 
         async def bad_execute(input_data):
-            return "not a dict"  # Invalid output
+            # Return a list instead of dict to test output validation
+            return ["invalid", "output", "type"]
 
         simple_agent.execute = bad_execute
 
