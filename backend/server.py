@@ -1958,6 +1958,29 @@ async def get_referral_stats(user: dict = Depends(get_current_user)):
 async def get_agents():
     return {"agents": AGENT_DEFINITIONS}
 
+@api_router.get("/agents/v2")
+async def get_agents_v2():
+    """Get all registered specialized agents from the new agent system."""
+    from agents.registry import AgentRegistry
+    
+    agents_list = []
+    for agent_name, agent_class in AgentRegistry.get_all_agents().items():
+        # Get docstring for description
+        doc = agent_class.__doc__ or ""
+        description = doc.strip().split('\n')[0] if doc else agent_name
+        
+        agents_list.append({
+            "name": agent_name,
+            "description": description,
+            "class": agent_name
+        })
+    
+    return {
+        "agents": agents_list,
+        "count": len(agents_list),
+        "version": "v2"
+    }
+
 @api_router.get("/agents/status/{project_id}")
 async def get_agent_status(project_id: str, user: dict = Depends(get_current_user)):
     statuses = await db.agent_status.find({"project_id": project_id}, {"_id": 0}).to_list(100)

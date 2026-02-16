@@ -2,8 +2,8 @@
 DocumentationAgent: Generates comprehensive documentation for the project.
 """
 from typing import Dict, Any
-from backend.agents.base_agent import BaseAgent, AgentValidationError
-from backend.agents.registry import AgentRegistry
+from agents.base_agent import BaseAgent, AgentValidationError
+from agents.registry import AgentRegistry
 
 
 @AgentRegistry.register

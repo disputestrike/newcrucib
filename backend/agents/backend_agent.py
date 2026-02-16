@@ -2,8 +2,8 @@
 BackendAgent: Generates complete backend API code with proper structure.
 """
 from typing import Dict, Any
-from backend.agents.base_agent import BaseAgent, AgentValidationError
-from backend.agents.registry import AgentRegistry
+from agents.base_agent import BaseAgent, AgentValidationError
+from agents.registry import AgentRegistry
 
 
 @AgentRegistry.register
