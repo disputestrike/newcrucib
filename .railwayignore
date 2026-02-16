@@ -21,8 +21,6 @@ coverage/
 *~
 .DS_Store
 Thumbs.db
-dist/
-build/
 node_modules/
 __pycache__/
 *.pyc

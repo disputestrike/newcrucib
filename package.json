@@ -1,0 +1,31 @@
+{
+  "name": "crucibai",
+  "version": "1.0.0",
+  "description": "CrucibAI - AI-Powered Full-Stack Application Builder",
+  "private": true,
+  "engines": {
+    "node": ">=18 <=22",
+    "npm": ">=8.0.0"
+  },
+  "scripts": {
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "pip install -r backend/requirements.txt",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run install:frontend && npm run build:frontend && npm run install:backend",
+    "start:backend": "cd backend && uvicorn server:app --host 0.0.0.0 --port ${PORT:-3000}",
+    "start": "npm run start:backend",
+    "start:prod": "npm run start:backend",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:backend": "cd backend && uvicorn server:app --reload --port 8000",
+    "dev": "echo 'Run dev:frontend and dev:backend in separate terminals'"
+  },
+  "keywords": [
+    "ai",
+    "fullstack",
+    "code-generation",
+    "react",
+    "fastapi"
+  ],
+  "author": "CrucibAI Team",
+  "license": "MIT"
+}
