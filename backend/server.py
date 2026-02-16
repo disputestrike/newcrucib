@@ -902,9 +902,23 @@ async def ai_chat(data: ChatMessage, user: dict = Depends(get_optional_user)):
             "tokens_used": tokens_used,
             "session_id": session_id
         }
+    except asyncio.TimeoutError:
+        logger.error("AI Chat timed out")
+        raise HTTPException(status_code=504, detail="Request timed out. Please try again.")
+    except ValueError as e:
+        logger.error(f"AI Chat validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except DatabaseError as e:
+        logger.error(f"AI Chat database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
+    except ExternalServiceError as e:
+        logger.error(f"AI Chat external service error: {str(e)}")
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"AI Chat error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
+        logger.exception("AI Chat unexpected error")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
 @api_router.get("/ai/chat/history/{session_id}")
 async def get_chat_history(session_id: str):
@@ -1290,9 +1304,17 @@ async def analyze_file(
             "analysis": analysis_result,
             "analysis_type": analysis_type,
         }
+    except asyncio.TimeoutError:
+        logger.error("File analysis timed out")
+        raise HTTPException(status_code=504, detail="File analysis timed out. File may be too large.")
+    except ValueError as e:
+        logger.error(f"File analysis validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"File analysis error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("File analysis unexpected error")
+        raise HTTPException(status_code=500, detail="Failed to analyze file")
 
 @api_router.post("/ai/image-to-code")
 async def image_to_code(
@@ -2952,11 +2974,17 @@ End with exactly: "Let me build this now."
     except asyncio.TimeoutError:
         logger.error("Build plan timed out")
         raise HTTPException(status_code=504, detail="Request timed out while generating plan. Please try again.")
+    except ValueError as e:
+        logger.error(f"Build plan validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except DatabaseError as e:
+        logger.error(f"Build plan database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("build/plan failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("build/plan unexpected error")
+        raise HTTPException(status_code=500, detail="Failed to generate build plan")
 
 @api_router.get("/projects/{project_id}/phases")
 async def get_project_phases(project_id: str, user: dict = Depends(get_current_user)):
