@@ -42,7 +42,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -133,183 +133,222 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str
-    name: str
-    ref: Optional[str] = None  # referral code at sign-up
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(..., min_length=1, max_length=100)
+    ref: Optional[str] = Field(None, max_length=50)  # referral code at sign-up
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=128)
 
 class ChatMessage(BaseModel):
-    message: str
-    session_id: Optional[str] = None
-    model: Optional[str] = "auto"  # auto, gpt-4o, claude, gemini
-    mode: Optional[str] = None  # thinking = step-by-step reasoning (no extra cost, same call)
+    message: str = Field(..., min_length=1, max_length=10000)
+    session_id: Optional[str] = Field(None, max_length=100)
+    model: Optional[str] = Field("auto", max_length=50)  # auto, gpt-4o, claude, gemini
+    mode: Optional[str] = Field(None, max_length=50)  # thinking = step-by-step reasoning
 
 class ChatResponse(BaseModel):
-    response: str
-    model_used: str
-    tokens_used: int
-    session_id: str
+    response: str = Field(..., max_length=50000)
+    model_used: str = Field(..., max_length=50)
+    tokens_used: int = Field(..., ge=0)
+    session_id: str = Field(..., max_length=100)
 
 class TokenPurchase(BaseModel):
-    bundle: str
+    bundle: str = Field(..., max_length=50)
 
 class BuildPlanRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(..., min_length=1, max_length=10000)
     swarm: Optional[bool] = False  # run plan + suggestions in parallel; token multiplier applied
-    build_kind: Optional[str] = None  # fullstack | mobile | saas | bot | ai_agent | game | trading | any
+    build_kind: Optional[str] = Field(None, max_length=50)  # fullstack | mobile | saas | bot | ai_agent | game | trading | any
 
 class EnterpriseContact(BaseModel):
-    company: str
+    company: str = Field(..., min_length=1, max_length=200)
     email: EmailStr
-    team_size: Optional[str] = None  # e.g. "1-10", "11-50", "51+"
-    use_case: Optional[str] = None  # e.g. "agency", "startup", "enterprise"
-    budget: Optional[str] = None  # e.g. "10K", "50K", "100K+", "custom"
-    message: Optional[str] = None
+    team_size: Optional[str] = Field(None, max_length=50)  # e.g. "1-10", "11-50", "51+"
+    use_case: Optional[str] = Field(None, max_length=100)  # e.g. "agency", "startup", "enterprise"
+    budget: Optional[str] = Field(None, max_length=50)  # e.g. "10K", "50K", "100K+", "custom"
+    message: Optional[str] = Field(None, max_length=5000)
 
 class ProjectCreate(BaseModel):
-    name: str
-    description: str
-    project_type: str
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=5000)
+    project_type: str = Field(..., min_length=1, max_length=50)
     requirements: Dict[str, Any]
-    estimated_tokens: Optional[int] = None
+    estimated_tokens: Optional[int] = Field(None, ge=0, le=10000000)
 
 class DocumentProcess(BaseModel):
-    content: str
-    doc_type: str = "text"
-    task: str = "summarize"  # summarize, extract, analyze
+    content: str = Field(..., min_length=1, max_length=100000)  # 100KB max
+    doc_type: str = Field("text", max_length=50)
+    task: str = Field("summarize", max_length=50)  # summarize, extract, analyze
 
 class RAGQuery(BaseModel):
-    query: str
-    context: Optional[str] = None
-    top_k: int = 5
+    query: str = Field(..., min_length=1, max_length=5000)
+    context: Optional[str] = Field(None, max_length=20000)
+    top_k: int = Field(5, ge=1, le=100)
 
 class SearchQuery(BaseModel):
-    query: str
-    search_type: str = "hybrid"  # vector, keyword, hybrid
+    query: str = Field(..., min_length=1, max_length=1000)
+    search_type: str = Field("hybrid", max_length=50)  # vector, keyword, hybrid
 
 class DeployTokensUpdate(BaseModel):
     """Optional deploy tokens for one-click deploy (stored per user, not returned in /auth/me)."""
-    vercel: Optional[str] = None
-    netlify: Optional[str] = None
+    vercel: Optional[str] = Field(None, max_length=500)
+    netlify: Optional[str] = Field(None, max_length=500)
 
 
 class DeployOneClickBody(BaseModel):
     """Optional token override for one-click deploy (otherwise use stored user tokens)."""
-    token: Optional[str] = None
+    token: Optional[str] = Field(None, max_length=500)
 
 
 class ExportFilesBody(BaseModel):
     """Files to export as ZIP: filename -> code content"""
     files: Dict[str, str]
+    
+    @field_validator('files')
+    @classmethod
+    def validate_files_size(cls, v):
+        # Limit total file size to 100MB
+        total_size = sum(len(content) for content in v.values())
+        if total_size > 100 * 1024 * 1024:
+            raise ValueError('Total file size exceeds 100MB limit')
+        # Limit number of files
+        if len(v) > 1000:
+            raise ValueError('Cannot export more than 1000 files')
+        return v
 
 class ValidateAndFixBody(BaseModel):
-    code: str
-    language: Optional[str] = "javascript"
+    code: str = Field(..., min_length=1, max_length=100000)
+    language: Optional[str] = Field("javascript", max_length=50)
 
 class QualityGateBody(BaseModel):
     """Quality gate: score generated code and return pass/fail + breakdown."""
-    code: Optional[str] = None
+    code: Optional[str] = Field(None, max_length=100000)
     files: Optional[Dict[str, str]] = None
+    
+    @field_validator('files')
+    @classmethod
+    def validate_files_size(cls, v):
+        if v is not None:
+            total_size = sum(len(content) for content in v.values())
+            if total_size > 100 * 1024 * 1024:
+                raise ValueError('Total file size exceeds 100MB limit')
+            if len(v) > 1000:
+                raise ValueError('Cannot process more than 1000 files')
+        return v
 
 class ExplainErrorBody(BaseModel):
-    code: str
-    error: str
-    language: Optional[str] = "javascript"
+    code: str = Field(..., min_length=1, max_length=100000)
+    error: str = Field(..., min_length=1, max_length=10000)
+    language: Optional[str] = Field("javascript", max_length=50)
 
 class SuggestNextBody(BaseModel):
     files: Dict[str, str]
-    last_prompt: Optional[str] = None
+    last_prompt: Optional[str] = Field(None, max_length=5000)
+    
+    @field_validator('files')
+    @classmethod
+    def validate_files_size(cls, v):
+        total_size = sum(len(content) for content in v.values())
+        if total_size > 100 * 1024 * 1024:
+            raise ValueError('Total file size exceeds 100MB limit')
+        return v
 
 class InjectStripeBody(BaseModel):
-    code: str
-    target: Optional[str] = "checkout"  # checkout | subscription | both
+    code: str = Field(..., min_length=1, max_length=100000)
+    target: Optional[str] = Field("checkout", max_length=50)  # checkout | subscription | both
 
 class GenerateReadmeBody(BaseModel):
-    code: str
-    project_name: Optional[str] = "App"
+    code: str = Field(..., min_length=1, max_length=100000)
+    project_name: Optional[str] = Field("App", max_length=200)
 
 class GenerateDocsBody(BaseModel):
-    code: str
-    doc_type: Optional[str] = "api"  # api | component
+    code: str = Field(..., min_length=1, max_length=100000)
+    doc_type: Optional[str] = Field("api", max_length=50)  # api | component
 
 class FaqItem(BaseModel):
-    q: str
-    a: str
+    q: str = Field(..., min_length=1, max_length=500)
+    a: str = Field(..., min_length=1, max_length=5000)
 
 class GenerateFaqSchemaBody(BaseModel):
-    faqs: List[FaqItem]
+    faqs: List[FaqItem] = Field(..., max_length=100)
 
 class ReferenceBuildBody(BaseModel):
-    url: Optional[str] = None
-    prompt: str
+    url: Optional[str] = Field(None, max_length=2000)
+    prompt: str = Field(..., min_length=1, max_length=10000)
 
 class SavePromptBody(BaseModel):
-    name: str
-    prompt: str
-    category: Optional[str] = "general"
+    name: str = Field(..., min_length=1, max_length=200)
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    category: Optional[str] = Field("general", max_length=50)
 
 class ProjectEnvBody(BaseModel):
-    project_id: Optional[str] = None
+    project_id: Optional[str] = Field(None, max_length=100)
     env: Dict[str, str]
 
 class SecurityScanBody(BaseModel):
     files: Dict[str, str]
+    
+    @field_validator('files')
+    @classmethod
+    def validate_files_size(cls, v):
+        total_size = sum(len(content) for content in v.values())
+        if total_size > 100 * 1024 * 1024:
+            raise ValueError('Total file size exceeds 100MB limit')
+        return v
 
 class OptimizeBody(BaseModel):
-    code: str
-    language: Optional[str] = "javascript"
+    code: str = Field(..., min_length=1, max_length=100000)
+    language: Optional[str] = Field("javascript", max_length=50)
 
 class ShareCreateBody(BaseModel):
-    project_id: str
+    project_id: str = Field(..., min_length=1, max_length=100)
     read_only: bool = True
 
 class GenerateContentRequest(BaseModel):
     """CrucibAI for Docs/Slides/Sheets (C1–C3)."""
-    prompt: str
-    format: Optional[str] = None  # doc: markdown|plain; slides: markdown|outline; sheets: csv|json
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    format: Optional[str] = Field(None, max_length=50)  # doc: markdown|plain; slides: markdown|outline; sheets: csv|json
 
 class AgentPromptBody(BaseModel):
     """Generic body for agent runs that take a prompt."""
-    prompt: str
-    context: Optional[str] = None
-    language: Optional[str] = "javascript"
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    context: Optional[str] = Field(None, max_length=20000)
+    language: Optional[str] = Field("javascript", max_length=50)
 
 class AgentCodeBody(BaseModel):
     """Body for agents that take code input."""
-    code: str
-    language: Optional[str] = "javascript"
+    code: str = Field(..., min_length=1, max_length=100000)
+    language: Optional[str] = Field("javascript", max_length=50)
 
 class AgentScrapeBody(BaseModel):
-    url: str
+    url: str = Field(..., min_length=1, max_length=2000)
 
 class AgentExportPdfBody(BaseModel):
-    title: str
-    content: str
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=1000000)  # 1MB max for PDF
 
 class AgentExportMarkdownBody(BaseModel):
-    title: str
-    content: str
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=1000000)
 
 class AgentExportExcelBody(BaseModel):
-    title: str
-    rows: List[Dict[str, Any]] = []  # list of dicts, keys = column headers
+    title: str = Field(..., min_length=1, max_length=200)
+    rows: List[Dict[str, Any]] = Field(default_factory=list, max_length=10000)  # Max 10k rows
 
 class AgentMemoryBody(BaseModel):
-    name: str
-    content: str
+    name: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=50000)
 
 class AgentGenericRunBody(BaseModel):
     """Run any agent by name (for 100-agent roster)."""
-    agent_name: str
-    prompt: str
+    agent_name: str = Field(..., min_length=1, max_length=100)
+    prompt: str = Field(..., min_length=1, max_length=10000)
 
 class AgentAutomationBody(BaseModel):
-    name: str
-    prompt: str
-    run_at: Optional[str] = None  # ISO datetime for scheduled
+    name: str = Field(..., min_length=1, max_length=200)
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    run_at: Optional[str] = Field(None, max_length=50)  # ISO datetime for scheduled
 
 # ==================== CREDITS & PRICING (1 credit = 1000 tokens) ====================
 
@@ -1185,7 +1224,10 @@ async def analyze_file(
     try:
         user_keys = await get_workspace_api_keys(user)
         effective = _effective_api_keys(user_keys)
-        content = await file.read()
+        
+        # Add timeout for file read operation (120 seconds max for large files)
+        content = await asyncio.wait_for(file.read(), timeout=120.0)
+        
         if file.content_type.startswith("image/"):
             image_data = base64.b64encode(content).decode("utf-8")
             try:
@@ -1194,18 +1236,27 @@ async def analyze_file(
                 if not openai_key:
                     raise ValueError("OpenAI key needed for image analysis. Add OPENAI_API_KEY in Settings or .env.")
                 client = OpenAI(api_key=openai_key)
-                resp = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are an expert at analyzing UI and design. Describe what you see and provide design insights."},
-                        {"role": "user", "content": [
-                            {"type": "image_url", "image_url": {"url": f"data:{file.content_type};base64,{image_data}"}},
-                            {"type": "text", "text": "Describe this image and provide design insights if it's a UI mockup."}
-                        ]}
-                    ],
-                    max_tokens=1024,
+                
+                # Add timeout for vision API call (30 seconds)
+                resp = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.chat.completions.create,
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "You are an expert at analyzing UI and design. Describe what you see and provide design insights."},
+                            {"role": "user", "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:{file.content_type};base64,{image_data}"}},
+                                {"type": "text", "text": "Describe this image and provide design insights if it's a UI mockup."}
+                            ]}
+                        ],
+                        max_tokens=1024,
+                    ),
+                    timeout=30.0
                 )
                 analysis_result = resp.choices[0].message.content or "No description."
+            except asyncio.TimeoutError:
+                logger.warning("Vision analysis timed out")
+                analysis_result = f"Image received: {file.filename} ({len(content)} bytes). Vision analysis timed out."
             except Exception as vision_err:
                 logger.warning(f"Vision analysis fallback: {vision_err}")
                 analysis_result = f"Image received: {file.filename} ({len(content)} bytes). Vision analysis unavailable: {vision_err!s}"
@@ -1218,12 +1269,17 @@ async def analyze_file(
             }
             prompt = prompts.get(analysis_type, prompts["general"])
             chain = _get_model_chain("auto", prompt, effective_keys=effective)
-            analysis_result, _ = await _call_llm_with_fallback(
-                message=prompt,
-                system_message="You are an expert code and document analyzer.",
-                session_id=str(uuid.uuid4()),
-                model_chain=chain,
-                api_keys=effective,
+            
+            # Add 30 second timeout for LLM analysis
+            analysis_result, _ = await asyncio.wait_for(
+                _call_llm_with_fallback(
+                    message=prompt,
+                    system_message="You are an expert code and document analyzer.",
+                    session_id=str(uuid.uuid4()),
+                    model_chain=chain,
+                    api_keys=effective,
+                ),
+                timeout=30.0
             )
         else:
             analysis_result = f"File type {file.content_type} analysis not fully supported yet."
@@ -2818,23 +2874,31 @@ End with exactly: "Let me build this now."
 
         async def get_plan():
             nonlocal plan_text
-            pt, _ = await _call_llm_with_fallback(
-                message=f"User request: {prompt}",
-                system_message=system,
-                session_id=str(uuid.uuid4()),
-                model_chain=model_chain,
-                api_keys=effective,
+            # Add 30 second timeout for LLM call
+            pt, _ = await asyncio.wait_for(
+                _call_llm_with_fallback(
+                    message=f"User request: {prompt}",
+                    system_message=system,
+                    session_id=str(uuid.uuid4()),
+                    model_chain=model_chain,
+                    api_keys=effective,
+                ),
+                timeout=30.0
             )
             return (pt or "").strip()
 
         async def get_suggestions_standalone():
             sug_system = "Given the user request for an app, suggest exactly 3 short follow-up features or improvements (e.g. 'Add Loan Management', 'Implement Alerts System'). Reply with a JSON array of 3 strings, nothing else."
-            resp, _ = await _call_llm_with_fallback(
-                message=f"User request: {prompt[:800]}",
-                system_message=sug_system,
-                session_id=str(uuid.uuid4()),
-                model_chain=model_chain,
-                api_keys=effective,
+            # Add 30 second timeout for LLM call
+            resp, _ = await asyncio.wait_for(
+                _call_llm_with_fallback(
+                    message=f"User request: {prompt[:800]}",
+                    system_message=sug_system,
+                    session_id=str(uuid.uuid4()),
+                    model_chain=model_chain,
+                    api_keys=effective,
+                ),
+                timeout=30.0
             )
             import re
             m = re.search(r"\[.*?\]", resp or "", re.DOTALL)
@@ -2842,24 +2906,34 @@ End with exactly: "Let me build this now."
             return [str(x).strip() for x in arr[:3]] if isinstance(arr, list) else []
 
         if use_swarm:
-            plan_text, sug_list = await asyncio.gather(get_plan(), get_suggestions_standalone())
+            # Swarm mode: run both in parallel with timeout
+            plan_text, sug_list = await asyncio.wait_for(
+                asyncio.gather(get_plan(), get_suggestions_standalone()),
+                timeout=60.0  # 60 seconds total for both parallel calls
+            )
             suggestions = sug_list or ["Add more features", "Enhance reporting", "Improve accessibility"]
         else:
             plan_text = await get_plan()
             try:
                 sug_system = "Given the app plan above, suggest exactly 3 short follow-up features or improvements (e.g. 'Add Loan Management', 'Implement Alerts System'). Reply with a JSON array of 3 strings, nothing else."
-                sug_resp, _ = await _call_llm_with_fallback(
-                    message=f"Plan:\n{plan_text[:1500]}",
-                    system_message=sug_system,
-                    session_id=str(uuid.uuid4()),
-                    model_chain=model_chain,
-                    api_keys=effective,
+                # Add 30 second timeout for suggestions call
+                sug_resp, _ = await asyncio.wait_for(
+                    _call_llm_with_fallback(
+                        message=f"Plan:\n{plan_text[:1500]}",
+                        system_message=sug_system,
+                        session_id=str(uuid.uuid4()),
+                        model_chain=model_chain,
+                        api_keys=effective,
+                    ),
+                    timeout=30.0
                 )
                 import re
                 m = re.search(r"\[.*?\]", sug_resp or "", re.DOTALL)
                 arr = json.loads(m.group()) if m else []
                 if isinstance(arr, list):
                     suggestions = [str(x).strip() for x in arr[:3]]
+            except asyncio.TimeoutError:
+                logger.warning("Suggestions call timed out after 30 seconds")
             except Exception:
                 pass
             if not suggestions:
@@ -2875,6 +2949,9 @@ End with exactly: "Let me build this now."
                 await _ensure_credit_balance(user["id"])
                 await db.users.update_one({"id": user["id"]}, {"$inc": {"credit_balance": -credit_deduct}})
         return {"plan_text": plan_text, "suggestions": suggestions, "model_used": "auto", "swarm_used": use_swarm, "plan_tokens": tokens_estimate}
+    except asyncio.TimeoutError:
+        logger.error("Build plan timed out")
+        raise HTTPException(status_code=504, detail="Request timed out while generating plan. Please try again.")
     except HTTPException:
         raise
     except Exception as e:
@@ -2977,13 +3054,22 @@ async def run_orchestration(project_id: str, user_id: str):
         tokens_used = 0
         try:
             if effective.get("openai") or effective.get("anthropic"):
-                response, _ = await _call_llm_with_fallback(
-                    message=prompt,
-                    system_message=system_msg,
-                    session_id=f"orch_{project_id}",
-                    model_chain=model_chain,
-                    api_keys=effective,
-                )
+                # Add timeout protection for LLM calls (30 seconds per API call)
+                try:
+                    response, _ = await asyncio.wait_for(
+                        _call_llm_with_fallback(
+                            message=prompt,
+                            system_message=system_msg,
+                            session_id=f"orch_{project_id}",
+                            model_chain=model_chain,
+                            api_keys=effective,
+                        ),
+                        timeout=30.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Orchestration agent {agent_name} LLM call timed out after 30 seconds")
+                    response = None
+                
                 tokens_used = max(100, min(200000, (len(prompt) + len(response or "")) * 2))
                 await db.project_logs.insert_one({
                     "id": str(uuid.uuid4()),
@@ -2993,6 +3079,8 @@ async def run_orchestration(project_id: str, user_id: str):
                     "level": "info",
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
+        except asyncio.TimeoutError:
+            logger.warning(f"Orchestration agent {agent_name} timed out")
         except Exception as e:
             logger.warning(f"Orchestration agent {agent_name} LLM failed: {e}")
 
