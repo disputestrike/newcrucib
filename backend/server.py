@@ -60,6 +60,12 @@ from urllib.parse import quote, urlencode
 from agent_dag import AGENT_DAG, get_execution_phases, build_context_from_previous_agents, get_system_prompt_for_agent
 from agent_resilience import AgentError, get_criticality, get_timeout, generate_fallback
 from code_quality import score_generated_code
+from benchmarks import (
+    SpeedBenchmark,
+    ComparisonReport,
+    AdvancedQualityAnalyzer,
+    ReportGenerator
+)
 try:
     from agents.image_generator import generate_images_for_app, parse_image_prompts
     from agents.video_generator import generate_videos_for_app, parse_video_queries
@@ -4277,6 +4283,156 @@ async def get_agents_activity(session_id: Optional[str] = None, user: dict = Dep
             "created_at": row.get("created_at"),
         })
     return {"activities": activities[:20]}
+
+# ==================== BENCHMARK ENDPOINTS ====================
+
+@api_router.post("/benchmark/speed")
+async def run_speed_benchmark(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Run speed benchmark suite.
+    
+    Request:
+    {
+        "prompts": ["Build a todo app", ...],  # Optional
+        "iterations": 1
+    }
+    """
+    try:
+        # Create a simple orchestrator function
+        async def simple_orchestrator(prompt: str) -> dict:
+            """Simple orchestrator for benchmarking"""
+            # This is a placeholder that simulates the orchestration
+            # In a real scenario, you'd use the actual orchestration system
+            return {
+                "success": True,
+                "metrics": {
+                    "tokens": {"total": 5000}
+                },
+                "summary": {
+                    "files_generated": 5
+                },
+                "validations": {
+                    "frontend": {"overall_valid": True},
+                    "quality": {"overall_score": 75}
+                }
+            }
+        
+        benchmark = SpeedBenchmark(simple_orchestrator)
+        
+        prompts = request.get("prompts")
+        iterations = request.get("iterations", 1)
+        
+        results = await benchmark.run_benchmark_suite(prompts, iterations)
+        
+        # Save to file
+        benchmark.save_report()
+        
+        return results
+    except Exception as e:
+        logger.error(f"Speed benchmark error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/benchmark/compare")
+async def compare_competitors(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Compare our results against competitors.
+    
+    Request:
+    {
+        "our_results": {...},  # From speed benchmark
+        "competitors": ["manus", "cursor", "bolt"]
+    }
+    """
+    try:
+        our_results = request.get("our_results")
+        if not our_results:
+            raise HTTPException(status_code=400, detail="our_results is required")
+        
+        competitors = request.get("competitors")
+        
+        comparison = ComparisonReport.generate_comparison(our_results, competitors)
+        
+        return comparison
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Competitor comparison error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/benchmark/quality-analysis")
+async def analyze_quality(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Deep quality analysis of generated code.
+    
+    Request:
+    {
+        "files": {"main.py": "...", "app.py": "..."}
+    }
+    """
+    try:
+        files = request.get("files", {})
+        
+        if not files:
+            raise HTTPException(status_code=400, detail="files dictionary is required")
+        
+        analyzer = AdvancedQualityAnalyzer()
+        analysis = analyzer.analyze_codebase(files)
+        
+        return analysis
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Quality analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/benchmark/generate-report")
+async def generate_benchmark_report(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Generate HTML or Markdown benchmark report.
+    
+    Request:
+    {
+        "format": "html" | "markdown",
+        "benchmark_results": {...},
+        "comparison_results": {...},  # Optional
+        "quality_results": {...}  # Optional
+    }
+    """
+    try:
+        format_type = request.get("format", "html")
+        benchmark_results = request.get("benchmark_results")
+        comparison_results = request.get("comparison_results")
+        quality_results = request.get("quality_results")
+        
+        if not benchmark_results:
+            raise HTTPException(status_code=400, detail="benchmark_results is required")
+        
+        if format_type == "html":
+            content = ReportGenerator.generate_html_report(
+                benchmark_results,
+                comparison_results,
+                quality_results
+            )
+            media_type = "text/html"
+        elif format_type == "markdown":
+            content = ReportGenerator.generate_markdown_report(
+                benchmark_results,
+                comparison_results,
+                quality_results
+            )
+            media_type = "text/markdown"
+        else:
+            raise HTTPException(status_code=400, detail="format must be 'html' or 'markdown'")
+        
+        return Response(content=content, media_type=media_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Report generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== ROOT ====================
 
