@@ -21,29 +21,38 @@ Main configuration file that tells Railway how to build and deploy the app.
 
 ```json
 {
+  "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "nixpacks"
+    "builder": "nixpacks",
+    "buildCommand": "npm run build"
   },
   "deploy": {
     "numReplicas": 1,
     "startCommand": "npm run start:prod",
+    "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
-  },
-  "variables": {
-    "PORT": "3000",
-    "NODE_ENV": "production"
   }
 }
 ```
 
-### 2. `Procfile`
+### 2. Root `package.json`
+Orchestrates the monorepo build process. Located at the repository root.
+
+Key scripts:
+- `npm run build` - Installs dependencies and builds frontend
+- `npm run start:prod` - Starts the FastAPI backend server
+- Node version constraint: `>=18 <=22`
+
+The backend serves both API routes and frontend static files on a single port.
+
+### 3. `Procfile`
 Tells Railway how to start the application.
 
 ```
 web: npm run start:prod
 ```
 
-### 3. `.railwayignore`
+### 4. `.railwayignore`
 Excludes unnecessary files from deployment to reduce build time and size.
 
 ---
@@ -103,29 +112,29 @@ CORS_ORIGIN=https://your-railway-app.railway.app
 
 ## Build Process
 
-Railway will:
+Railway will execute the build script from root `package.json`:
 
-1. **Install dependencies**
+1. **Install frontend dependencies**
    ```bash
-   npm install
-   npm install --prefix backend
-   npm install --prefix frontend
+   cd frontend && npm install --legacy-peer-deps
    ```
 
 2. **Build frontend**
    ```bash
-   npm run build --prefix frontend
+   cd frontend && npm run build
    ```
+   This creates optimized production files in `frontend/build/`
 
-3. **Build backend**
+3. **Install backend dependencies**
    ```bash
-   npm run build --prefix backend
+   pip install -r backend/requirements.txt
    ```
 
 4. **Start application**
    ```bash
-   npm run start:prod
+   cd backend && uvicorn server:app --host 0.0.0.0 --port ${PORT:-3000}
    ```
+   The backend serves both the API endpoints and the frontend static files.
 
 ---
 
