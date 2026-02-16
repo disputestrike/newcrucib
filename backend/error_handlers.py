@@ -202,8 +202,8 @@ def redact_sensitive_data(data: Any, max_traceback_lines: int = 20) -> Any:
     elif isinstance(data, str):
         # Redact authorization headers in strings
         import re
-        # Redact Bearer tokens
-        data = re.sub(r'Bearer\s+[A-Za-z0-9_\-\.]+', 'Bearer ***REDACTED***', data, flags=re.IGNORECASE)
+        # Redact Bearer tokens (comprehensive pattern for JWT/base64url tokens)
+        data = re.sub(r'Bearer\s+[A-Za-z0-9_\-\.\/\+=]+', 'Bearer ***REDACTED***', data, flags=re.IGNORECASE)
         # Redact API keys in format api_key=xxx or apiKey=xxx
         data = re.sub(r'api[_-]?key\s*[:=]\s*["\']?[A-Za-z0-9_\-\.]+["\']?', 'api_key=***REDACTED***', data, flags=re.IGNORECASE)
         return data

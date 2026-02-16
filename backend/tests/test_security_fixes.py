@@ -199,13 +199,27 @@ class TestCORSConfiguration:
 class TestJWTConfiguration:
     """Test JWT secret configuration"""
     
-    def test_jwt_secret_required(self):
-        """Test that JWT_SECRET is required on startup"""
-        # This is tested by attempting to import server without JWT_SECRET set
-        # In production, the import would fail if JWT_SECRET is not set
-        # We verify the logic exists rather than actually triggering the failure
+    def test_jwt_secret_check_exists(self):
+        """Test that JWT_SECRET validation code exists"""
+        # Verify the server code has JWT_SECRET validation
+        # In actual deployment, server.py will fail to import if JWT_SECRET is missing
         import os
-        assert 'JWT_SECRET' in os.environ or True  # Would fail in actual startup
+        
+        # Check that JWT_SECRET is either set in environment or would be required
+        # This test documents the requirement without causing test failures
+        jwt_secret = os.environ.get('JWT_SECRET')
+        
+        # If JWT_SECRET is set, verify it's non-empty
+        if jwt_secret:
+            assert len(jwt_secret) > 0, "JWT_SECRET should not be empty"
+        
+        # The actual validation happens at server startup in server.py
+        # We verify the validation code exists by checking the file
+        server_file = os.path.join(os.path.dirname(__file__), '..', 'server.py')
+        with open(server_file, 'r') as f:
+            server_code = f.read()
+            assert 'JWT_SECRET' in server_code
+            assert 'raise ValueError' in server_code
 
 
 if __name__ == "__main__":

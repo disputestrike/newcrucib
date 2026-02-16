@@ -23,8 +23,8 @@ def _get_fernet() -> Optional[Fernet]:
     try:
         # Ensure key is in correct format
         key_bytes = ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY
-        # Pad or trim to 32 bytes for Fernet (URL-safe base64)
-        if len(key_bytes) != 44:  # Fernet keys are 44 bytes in base64
+        # Fernet keys are 32 bytes encoded as 44 characters in URL-safe base64
+        if len(key_bytes) != 44:
             # Generate proper key from provided string
             import hashlib
             hash_key = hashlib.sha256(key_bytes).digest()
@@ -80,9 +80,9 @@ def decrypt_value(encrypted_value: str) -> str:
     try:
         decrypted_bytes = fernet.decrypt(encrypted_value.encode())
         return decrypted_bytes.decode()
-    except Exception as e:
+    except Exception:
         # If decryption fails, value might be plaintext (backward compatibility)
-        logger.debug(f"Decryption failed, returning original value: {e}")
+        logger.debug("Decryption failed, assuming plaintext for backward compatibility")
         return encrypted_value
 
 def encrypt_dict(data: Dict[str, Any], sensitive_keys: set = None) -> Dict[str, Any]:

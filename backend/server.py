@@ -122,12 +122,19 @@ security = HTTPBearer(auto_error=False)
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
     logger.critical("JWT_SECRET environment variable is not set. This is required for authentication.")
-    raise ValueError("JWT_SECRET must be configured in environment variables. Set JWT_SECRET to a secure random string.")
+    raise ValueError(
+        "JWT_SECRET must be configured in environment variables. "
+        "Generate a secure secret with: openssl rand -base64 32"
+    )
 
 JWT_ALGORITHM = "HS256"
 LLM_API_KEY = os.environ.get('OPENAI_API_KEY') or os.environ.get('LLM_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+
+# ==================== VALIDATION CONSTANTS ====================
+MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
+MAX_FILES_COUNT = 1000
 
 # ==================== MODELS ====================
 
@@ -208,13 +215,13 @@ class ExportFilesBody(BaseModel):
     @field_validator('files')
     @classmethod
     def validate_files_size(cls, v):
-        # Limit total file size to 100MB
+        # Limit total file size
         total_size = sum(len(content) for content in v.values())
-        if total_size > 100 * 1024 * 1024:
-            raise ValueError('Total file size exceeds 100MB limit')
+        if total_size > MAX_FILE_SIZE_BYTES:
+            raise ValueError(f'Total file size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit')
         # Limit number of files
-        if len(v) > 1000:
-            raise ValueError('Cannot export more than 1000 files')
+        if len(v) > MAX_FILES_COUNT:
+            raise ValueError(f'Cannot export more than {MAX_FILES_COUNT} files')
         return v
 
 class ValidateAndFixBody(BaseModel):
@@ -231,10 +238,10 @@ class QualityGateBody(BaseModel):
     def validate_files_size(cls, v):
         if v is not None:
             total_size = sum(len(content) for content in v.values())
-            if total_size > 100 * 1024 * 1024:
-                raise ValueError('Total file size exceeds 100MB limit')
-            if len(v) > 1000:
-                raise ValueError('Cannot process more than 1000 files')
+            if total_size > MAX_FILE_SIZE_BYTES:
+                raise ValueError(f'Total file size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit')
+            if len(v) > MAX_FILES_COUNT:
+                raise ValueError(f'Cannot process more than {MAX_FILES_COUNT} files')
         return v
 
 class ExplainErrorBody(BaseModel):
@@ -250,8 +257,8 @@ class SuggestNextBody(BaseModel):
     @classmethod
     def validate_files_size(cls, v):
         total_size = sum(len(content) for content in v.values())
-        if total_size > 100 * 1024 * 1024:
-            raise ValueError('Total file size exceeds 100MB limit')
+        if total_size > MAX_FILE_SIZE_BYTES:
+            raise ValueError(f'Total file size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit')
         return v
 
 class InjectStripeBody(BaseModel):
@@ -293,8 +300,8 @@ class SecurityScanBody(BaseModel):
     @classmethod
     def validate_files_size(cls, v):
         total_size = sum(len(content) for content in v.values())
-        if total_size > 100 * 1024 * 1024:
-            raise ValueError('Total file size exceeds 100MB limit')
+        if total_size > MAX_FILE_SIZE_BYTES:
+            raise ValueError(f'Total file size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit')
         return v
 
 class OptimizeBody(BaseModel):
@@ -4477,8 +4484,10 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
 cors_origins_env = os.environ.get('CORS_ORIGINS', 'http://localhost:3000')
 cors_origins = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
 
-# Warn if using localhost in production
-if any('localhost' in origin or '127.0.0.1' in origin for origin in cors_origins):
+# Warn if using localhost in production (check for localhost at start of URL)
+if any(origin.startswith('http://localhost') or origin.startswith('http://127.0.0.1') or 
+       origin.startswith('https://localhost') or origin.startswith('https://127.0.0.1') 
+       for origin in cors_origins):
     logger.warning(
         "CORS configured with localhost origins. "
         "This should only be used in development. "
