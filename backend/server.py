@@ -4416,10 +4416,13 @@ if frontend_build_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
     
     @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        """Serve the React SPA for all non-API routes"""
-        # Don't intercept API routes
-        if full_path.startswith("api/") or full_path.startswith("ws/") or full_path == "branding":
+    async def serve_spa(full_path: str, request: Request):
+        """Serve the React SPA for all non-API routes (catch-all for client-side routing)"""
+        # Don't intercept API routes, websockets, or special endpoints
+        if (full_path.startswith("api/") or 
+            full_path.startswith("ws/") or 
+            full_path == "branding" or
+            full_path.startswith("static/")):
             raise HTTPException(status_code=404)
         
         # Serve index.html for all other routes (SPA routing)
