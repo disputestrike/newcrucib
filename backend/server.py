@@ -3326,6 +3326,14 @@ async def run_orchestration_v2(project_id: str, user_id: str):
     validations = {}
     executor = CodeExecutor(timeout=300)
     
+    # Determine backend language early for use across validation steps
+    backend_language = "Python"  # Default
+    stack_info = results.get("Stack Selector", {}).get("output", "")
+    if "node" in stack_info.lower() or "express" in stack_info.lower():
+        backend_language = "Node.js"
+    elif "typescript" in stack_info.lower() and "backend" in stack_info.lower():
+        backend_language = "TypeScript"
+    
     try:
         # Validate frontend if generated
         if fe and results.get("Frontend Generation", {}).get("status") != "failed":
@@ -3380,19 +3388,11 @@ async def run_orchestration_v2(project_id: str, user_id: str):
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             
-            # Determine backend language
-            language = "Python"  # Default
-            stack_info = results.get("Stack Selector", {}).get("output", "")
-            if "node" in stack_info.lower() or "express" in stack_info.lower():
-                language = "Node.js"
-            elif "typescript" in stack_info.lower():
-                language = "TypeScript"
-            
             # Prepare backend files
-            backend_files = {"server.py": be} if language == "Python" else {"server.js": be}
+            backend_files = {"server.py": be} if backend_language == "Python" else {"server.js": be}
             
             # Validate backend syntax
-            validation_result = await executor.validate_backend(backend_files, language)
+            validation_result = await executor.validate_backend(backend_files, backend_language)
             validations["backend"] = validation_result
             
             await db.project_logs.insert_one({
@@ -3419,7 +3419,7 @@ async def run_orchestration_v2(project_id: str, user_id: str):
             if tests:
                 code_files["test_main.py"] = tests
             
-            quality_detail = scorer.score_code(code_files, "Python" if be else "TypeScript")
+            quality_detail = scorer.score_code(code_files, backend_language)
             validations["quality_detail"] = quality_detail
             
             # Update overall quality score with detailed metrics

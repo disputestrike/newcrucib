@@ -252,10 +252,14 @@ class QualityScorer:
         else:
             score += 30  # Default if no functions
         
-        # Check for inline comments
+        # Check for inline comments (count per file type)
         total_lines = sum(len(content.split('\n')) for content in files.values())
-        total_comments = sum(content.count('#') for content in files.values() if any(f.endswith('.py') for f in files.keys()))
-        total_comments += sum(content.count('//') for content in files.values() if any(f.endswith(('.js', '.ts', '.jsx', '.tsx')) for f in files.keys()))
+        total_comments = 0
+        for file_path, content in files.items():
+            if file_path.endswith('.py'):
+                total_comments += content.count('#')
+            elif file_path.endswith(('.js', '.ts', '.jsx', '.tsx')):
+                total_comments += content.count('//')
         
         if total_lines > 0 and total_comments / total_lines > 0.05:
             score += 10
@@ -428,17 +432,16 @@ class QualityScorer:
             # Check for SQL injection vulnerabilities
             if language == "python":
                 # Look for string formatting in SQL queries
-                if re.search(r'(execute|cursor)\s*\([^)]*%|\.format\(', content):
-                    if 'execute(' in content and '%' in content:
-                        score -= 10
-                        issues.append({
-                            "severity": "high",
-                            "category": "security",
-                            "file": file_path,
-                            "line": None,
-                            "message": "Potential SQL injection vulnerability",
-                            "suggestion": "Use parameterized queries"
-                        })
+                if re.search(r'execute\s*\([^)]*%s|execute\s*\([^)]*\.format\(', content):
+                    score -= 10
+                    issues.append({
+                        "severity": "high",
+                        "category": "security",
+                        "file": file_path,
+                        "line": None,
+                        "message": "Potential SQL injection vulnerability",
+                        "suggestion": "Use parameterized queries"
+                    })
             
             # Check for eval() usage
             if 'eval(' in content:

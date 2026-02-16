@@ -155,22 +155,29 @@ class TestRunner:
         
         result["total"] = result["passed_count"] + result["failed_count"] + result["skipped"]
         
-        # Parse failures
-        # Look for FAILED tests/test_file.py::test_name
-        failure_pattern = r'FAILED\s+([\w/\.]+)::([\w_]+)\s*-\s*(.+?)(?=\n(?:FAILED|PASSED|$))'
-        for match in re.finditer(failure_pattern, output, re.DOTALL):
-            file_path = match.group(1)
-            test_name = match.group(2)
-            error_msg = match.group(3).strip()
-            
-            # Clean up error message
-            error_msg = error_msg.split('\n')[0] if '\n' in error_msg else error_msg
-            
-            result["failures"].append({
-                "test": test_name,
-                "file": file_path,
-                "error": error_msg
-            })
+        # Parse failures - first split by FAILED markers, then process each
+        failure_lines = output.split('FAILED ')
+        for failure_line in failure_lines[1:]:  # Skip first empty split
+            # Extract test identifier (file::test_name)
+            test_match = re.match(r'([\w/\.]+)::([\w_]+)', failure_line)
+            if test_match:
+                file_path = test_match.group(1)
+                test_name = test_match.group(2)
+                
+                # Extract error message (everything after the dash until next test or end)
+                error_match = re.search(r'-\s*(.+?)(?=\nFAILED|\nPASSED|$)', failure_line, re.DOTALL)
+                if error_match:
+                    error_msg = error_match.group(1).strip()
+                    # Take only first line for brevity
+                    error_msg = error_msg.split('\n')[0] if '\n' in error_msg else error_msg
+                else:
+                    error_msg = "Test failed"
+                
+                result["failures"].append({
+                    "test": test_name,
+                    "file": file_path,
+                    "error": error_msg
+                })
         
         return result
     
