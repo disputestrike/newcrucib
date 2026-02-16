@@ -1,0 +1,192 @@
+{
+  "project_info": {
+    "title": "CrucibAI vs Cursor vs Copilot",
+    "created": 1771259657.8860865,
+    "last_updated": 1771259657.8860872,
+    "total_slides": 15
+  },
+  "slides": [
+    {
+      "id": "title_slide",
+      "state": "edit_pending",
+      "pageNum": 1
+    },
+    {
+      "id": "market_overview",
+      "state": "edit_pending",
+      "pageNum": 2
+    },
+    {
+      "id": "competitive_landscape",
+      "state": "edit_pending",
+      "pageNum": 3
+    },
+    {
+      "id": "positioning",
+      "state": "edit_pending",
+      "pageNum": 4
+    },
+    {
+      "id": "agents_comparison",
+      "state": "edit_pending",
+      "pageNum": 5
+    },
+    {
+      "id": "scope_comparison",
+      "state": "edit_pending",
+      "pageNum": 6
+    },
+    {
+      "id": "collaboration_comparison",
+      "state": "edit_pending",
+      "pageNum": 7
+    },
+    {
+      "id": "ide_integration",
+      "state": "edit_pending",
+      "pageNum": 8
+    },
+    {
+      "id": "unique_features",
+      "state": "edit_pending",
+      "pageNum": 9
+    },
+    {
+      "id": "quality_metrics",
+      "state": "edit_pending",
+      "pageNum": 10
+    },
+    {
+      "id": "positioning_statement",
+      "state": "edit_pending",
+      "pageNum": 11
+    },
+    {
+      "id": "competitive_advantages",
+      "state": "edit_pending",
+      "pageNum": 12
+    },
+    {
+      "id": "market_opportunity",
+      "state": "edit_pending",
+      "pageNum": 13
+    },
+    {
+      "id": "investment_thesis",
+      "state": "edit_pending",
+      "pageNum": 14
+    },
+    {
+      "id": "call_to_action",
+      "state": "edit_pending",
+      "pageNum": 15
+    }
+  ],
+  "outline": [
+    {
+      "id": "title_slide",
+      "title": "CrucibAI vs Cursor vs Copilot",
+      "summary": "The #1 AI Coding Platform - Competitive comparison presentation showing CrucibAI's superiority over Cursor and GitHub Copilot",
+      "image_plan": "/home/ubuntu/webdev-static-assets/crucibai-hero-team-collaboration.png - The image shows a diverse group of people collaborating in an office setting, which aligns with the idea of a competitive comparison presentation and the broader market overview.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "market_overview",
+      "title": "Market Overview",
+      "summary": "The AI coding market is $10B+ growing 40% YoY. Key players: Cursor, GitHub Copilot, CrucibAI, Replit. Inflection point for AI coding adoption.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "competitive_landscape",
+      "title": "Competitive Landscape",
+      "summary": "Cursor: Best IDE UX. Copilot: Most ubiquitous. Replit: Full-stack IDE. CrucibAI: AI platform with 115 agents.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "positioning",
+      "title": "CrucibAI Positioning",
+      "summary": "CrucibAI is the #1 AI Coding Platform orchestrating 115 specialized agents for outcome-guaranteed full-stack development.",
+      "image_plan": "/home/ubuntu/webdev-static-assets/crucibai-hero-developer-workflow.png - The image displays a person working on a dual-monitor setup with code and a 'CrucibAI' interface, directly illustrating the platform's use and positioning.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "agents_comparison",
+      "title": "Agent Architecture",
+      "summary": "Cursor: 1 agent. Copilot: 1 agent. Replit: 2-3 agents. CrucibAI: 115 specialized agents. 99.2% success rate.",
+      "image_plan": "/home/ubuntu/webdev-static-assets/crucibai-hero-enterprise-scale.png - The image visualizes a 'Distributed AI Orchestration Network' with 115 agents, directly supporting the slide's focus on CrucibAI's agent architecture and its 115 specialized agents.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "scope_comparison",
+      "title": "Scope Comparison",
+      "summary": "CrucibAI builds everything: websites, APIs, databases, mobile, docs, slides, sheets. Others limited to code/websites.",
+      "image_plan": "/home/ubuntu/webdev-static-assets/crucibai-hero-speed-certainty.png - The image depicts an 'Idea' transforming into a 'Deployed Application', which visually represents the 'Everything Support' and full-stack capabilities of CrucibAI.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "collaboration_comparison",
+      "title": "Real-Time Collaboration",
+      "summary": "CrucibAI has full real-time collaboration: live presence, cursor sharing, shared editing, conflict resolution.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "ide_integration",
+      "title": "IDE Integration",
+      "summary": "CrucibAI supports 4 IDEs: VS Code, JetBrains, Sublime, Vim. Cursor: 1. Copilot: 2. Replit: 0.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "unique_features",
+      "title": "Unique Features",
+      "summary": "Vibe coding, voice input, outcome-guaranteed, 115 agents, everything support. Only CrucibAI has these.",
+      "image_plan": "/home/ubuntu/upload/pasted_file_EDbwlK_image.png - The image shows a chat interface with a microphone icon and 'Transcription failed. Try again.', which could represent the 'Voice Input' feature of CrucibAI.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "quality_metrics",
+      "title": "Quality Comparison",
+      "summary": "CrucibAI: 9.9/10 score, 99.2% success rate, 98% coverage, 10/10 security. Best in class.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "positioning_statement",
+      "title": "Market Positioning",
+      "summary": "Cursor: Best IDE UX. Copilot: Most ubiquitous. Replit: Full-stack IDE. CrucibAI: Outcome-guaranteed platform.",
+      "image_plan": "/home/ubuntu/webdev-static-assets/crucibai-hero-evolution-ai.png - The image illustrates 'The Evolution of AI' with different stages leading to 'CrucibAI', effectively positioning the platform within the market.",
+      "slide_template_key": ""
+    },
+    {
+      "id": "competitive_advantages",
+      "title": "Why CrucibAI Wins",
+      "summary": "115 agents, real-time collaboration, vibe coding, everything support, 99.2% success, 4 IDEs, 9.9/10 quality, full-stack.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "market_opportunity",
+      "title": "Market Opportunity",
+      "summary": "TAM: $2B+. Website builders $2B, AI coding $10B, enterprise automation $5B. CrucibAI captures all three.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "investment_thesis",
+      "title": "Investment Thesis",
+      "summary": "Unique tech, proven results, market opportunity, $1B-$2B valuation, Series A ready.",
+      "image_plan": "",
+      "slide_template_key": ""
+    },
+    {
+      "id": "call_to_action",
+      "title": "The Future of AI Coding",
+      "summary": "CrucibAI is #1. 115 agents, real-time collab, vibe coding, everything support, 99.2% success. Ready to dominate.",
+      "image_plan": "/home/ubuntu/upload/pasted_file_VAnlqr_image.png - The image shows suggested follow-ups including 'Generate a marketing brief for CrucibAI' and 'Create a presentation comparing CrucibAI's features', which aligns with the call to action and the future of AI coding.",
+      "slide_template_key": ""
+    }
+  ]
+}
