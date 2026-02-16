@@ -60,6 +60,10 @@ from urllib.parse import quote, urlencode
 from agent_dag import AGENT_DAG, get_execution_phases, build_context_from_previous_agents, get_system_prompt_for_agent
 from agent_resilience import AgentError, get_criticality, get_timeout, generate_fallback
 from code_quality import score_generated_code
+from code_executor import CodeExecutor
+from syntax_validator import SyntaxValidator
+from quality_scorer import QualityScorer
+from test_runner import TestRunner
 try:
     from agents.image_generator import generate_images_for_app, parse_image_prompts
     from agents.video_generator import generate_videos_for_app, parse_video_queries
@@ -3317,6 +3321,137 @@ async def run_orchestration_v2(project_id: str, user_id: str):
     images = (results.get("Image Generation") or {}).get("images") or {}
     videos = (results.get("Video Generation") or {}).get("videos") or {}
     quality = score_generated_code(frontend_code=fe, backend_code=be, database_schema=db_schema, test_code=tests)
+    
+    # Week 3: Add validation and quality scoring using new validation system
+    validations = {}
+    executor = CodeExecutor(timeout=300)
+    
+    try:
+        # Validate frontend if generated
+        if fe and results.get("Frontend Generation", {}).get("status") != "failed":
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": "🔍 Validating frontend code...", "level": "info",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            # Extract framework from Stack Selector results
+            stack_info = results.get("Stack Selector", {}).get("output", "")
+            framework = "React"  # Default
+            if "vue" in stack_info.lower():
+                framework = "Vue"
+            elif "angular" in stack_info.lower():
+                framework = "Angular"
+            
+            # Prepare frontend files for validation
+            frontend_files = {
+                "src/App.jsx": fe,
+                "package.json": json.dumps({
+                    "name": "app",
+                    "version": "1.0.0",
+                    "scripts": {"build": "echo 'Build placeholder'"}
+                })
+            }
+            
+            # Syntax check first (fast)
+            syntax_result = SyntaxValidator.validate_react_component(fe)
+            
+            # Note: Full build validation is expensive and may require npm/node
+            # Only run if syntax is valid and in production environment
+            build_result = {"skipped": True, "reason": "Full build validation requires npm environment"}
+            
+            validations["frontend"] = {
+                "syntax": syntax_result,
+                "build": build_result
+            }
+            
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": f"Frontend syntax validation: {'✓ PASS' if syntax_result['valid'] else '✗ FAIL'}",
+                "level": "success" if syntax_result['valid'] else "warning",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        # Validate backend if generated
+        if be and results.get("Backend Generation", {}).get("status") != "failed":
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": "🔍 Validating backend code...", "level": "info",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            # Determine backend language
+            language = "Python"  # Default
+            stack_info = results.get("Stack Selector", {}).get("output", "")
+            if "node" in stack_info.lower() or "express" in stack_info.lower():
+                language = "Node.js"
+            elif "typescript" in stack_info.lower():
+                language = "TypeScript"
+            
+            # Prepare backend files
+            backend_files = {"server.py": be} if language == "Python" else {"server.js": be}
+            
+            # Validate backend syntax
+            validation_result = await executor.validate_backend(backend_files, language)
+            validations["backend"] = validation_result
+            
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": f"Backend validation: {'✓ PASS' if validation_result['valid'] else '✗ FAIL'} ({validation_result['files_checked']} files checked)",
+                "level": "success" if validation_result['valid'] else "warning",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        # Score quality using enhanced quality scorer
+        if fe or be:
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": "📊 Scoring code quality...", "level": "info",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            scorer = QualityScorer()
+            code_files = {}
+            if fe:
+                code_files["src/App.jsx"] = fe
+            if be:
+                code_files["server.py"] = be
+            if tests:
+                code_files["test_main.py"] = tests
+            
+            quality_detail = scorer.score_code(code_files, "Python" if be else "TypeScript")
+            validations["quality_detail"] = quality_detail
+            
+            # Update overall quality score with detailed metrics
+            quality = quality_detail["overall_score"]
+            
+            await db.project_logs.insert_one({
+                "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+                "message": f"Quality score: {quality}/100 (Complexity: {quality_detail['metrics']['complexity']}, Security: {quality_detail['metrics']['security']})",
+                "level": "success",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        # Run tests if generated (optional - can be expensive)
+        # Uncommented for production use where test execution is desired
+        # if tests and results.get("Test Generation", {}).get("status") != "failed":
+        #     runner = TestRunner(executor)
+        #     test_files = {"test_main.py": tests}
+        #     if be:
+        #         test_files["server.py"] = be
+        #     test_results = await runner.run_python_tests(test_files)
+        #     validations["tests"] = test_results
+        
+    except Exception as e:
+        # Don't fail the build if validation fails
+        await db.project_logs.insert_one({
+            "id": str(uuid.uuid4()), "project_id": project_id, "agent": "ValidationSystem",
+            "message": f"⚠ Validation error: {str(e)}", "level": "warning",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        validations["error"] = str(e)
+    
+    # End of validation section
     deploy_files = {}
     if fe:
         fe = _inject_media_into_jsx(fe, images, videos)
@@ -3338,6 +3473,8 @@ async def run_orchestration_v2(project_id: str, user_id: str):
         "quality_score": quality,
         "orchestration_version": "v2_dag",
     }
+    if validations:
+        set_payload["validations"] = validations
     if images:
         set_payload["images"] = images
     if videos:
