@@ -8,11 +8,11 @@ from typing import List, Dict, Any, Union
 import logging
 import asyncio
 
-from backend.agents.registry import AgentRegistry
-from backend.code_executor import CodeExecutor
-from backend.syntax_validator import SyntaxValidator
-from backend.quality_scorer import QualityScorer
-from backend.test_runner import TestRunner
+from agents.registry import AgentRegistry
+from code_executor import CodeExecutor
+from syntax_validator import SyntaxValidator
+from quality_scorer import QualityScorer
+from test_runner import TestRunner
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,14 @@ Tests workflow execution, validation, and quality scoring.
 """
 
 import pytest
-from backend.orchestration_v2 import OrchestrationV2, WorkflowPresets
-from backend.agents.registry import AgentRegistry
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from orchestration_v2 import OrchestrationV2, WorkflowPresets
+from agents.registry import AgentRegistry
 
 
 @pytest.mark.asyncio
