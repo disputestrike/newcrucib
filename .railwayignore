@@ -1,0 +1,60 @@
+# Railway ignore file - exclude unnecessary files from deployment
+
+# Documentation
+*.md
+docs/
+README*
+CHANGELOG*
+LICENSE*
+
+# Development files
+.git/
+.github/
+.gitignore
+.gitconfig
+.env.local
+.env.*.local
+
+# Test files
+tests/
+test_reports/
+*.test.js
+*.spec.js
+coverage/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.log
+.emergent/
+memory/
+
+# Scripts (not needed in production)
+scripts/
+*.ps1
+run-*.ps1
+
+# Extracted content
+extracted_content/
+
+# Presentations (not needed in production)
+presentations/
