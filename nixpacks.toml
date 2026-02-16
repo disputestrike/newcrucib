@@ -1,0 +1,21 @@
+[build]
+# Install both Python and Node.js
+nixpkgs.python = "3.11"
+nixpkgs.nodejs = "18"
+
+# Install Python dependencies
+[phases.setup]
+cmds = [
+  "pip install -r backend/requirements.txt",
+  "cd frontend && npm install && cd .."
+]
+
+# Build frontend
+[phases.build]
+cmds = [
+  "cd frontend && npm run build && cd .."
+]
+
+# Start backend (which serves frontend)
+[start]
+cmd = "python backend/server.py"
