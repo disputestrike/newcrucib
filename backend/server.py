@@ -60,6 +60,10 @@ from urllib.parse import quote, urlencode
 from agent_dag import AGENT_DAG, get_execution_phases, build_context_from_previous_agents, get_system_prompt_for_agent
 from agent_resilience import AgentError, get_criticality, get_timeout, generate_fallback
 from code_quality import score_generated_code
+from orchestration_v2 import OrchestrationV2, WorkflowPresets
+from agents.registry import AgentRegistry
+from quality_scorer import QualityScorer
+from code_executor import CodeExecutor
 try:
     from agents.image_generator import generate_images_for_app, parse_image_prompts
     from agents.video_generator import generate_videos_for_app, parse_video_queries
@@ -300,6 +304,14 @@ class AgentAutomationBody(BaseModel):
     name: str
     prompt: str
     run_at: Optional[str] = None  # ISO datetime for scheduled
+
+class GenerationRequest(BaseModel):
+    """Request model for V2 generation endpoint"""
+    prompt: str
+    workflow: Optional[Union[str, List[str]]] = "full_stack"
+    validate: Optional[bool] = True
+    run_tests: Optional[bool] = False
+    score_quality: Optional[bool] = True
 
 # ==================== CREDITS & PRICING (1 credit = 1000 tokens) ====================
 
@@ -4404,6 +4416,168 @@ async def seed_examples_if_empty():
             logger.info("Seeded 5 examples: todo-app, blog-platform, ecommerce-store, project-management, analytics-dashboard")
     except Exception as e:
         logger.warning(f"Seed examples: {e}")
+
+
+# ==================== V2 API ENDPOINTS ====================
+
+@app.post("/api/generate/v2")
+async def generate_app_v2(request: GenerationRequest):
+    """
+    V2 generation with automatic validation and quality scoring.
+    
+    Request body:
+    {
+        "prompt": "Build a todo app",
+        "workflow": "full_stack" | ["PlannerAgent", "FrontendAgent", ...],
+        "validate": true,
+        "run_tests": false,
+        "score_quality": true
+    }
+    """
+    try:
+        workflow = request.workflow if hasattr(request, 'workflow') and request.workflow else "full_stack"
+        validate = getattr(request, 'validate', True)
+        run_tests = getattr(request, 'run_tests', False)
+        score_quality = getattr(request, 'score_quality', True)
+        
+        orchestrator = OrchestrationV2(
+            llm_client=None,
+            config={"default_model": "gpt-4o", "timeout": 300}
+        )
+        
+        result = await orchestrator.execute_workflow(
+            user_prompt=request.prompt,
+            workflow=workflow,
+            validate_code=validate,
+            run_tests=run_tests,
+            score_quality=score_quality
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/agents/v2")
+async def list_agents_v2():
+    """List all registered V2 agents"""
+    try:
+        agents = AgentRegistry.list_agents()
+        
+        return {
+            "agents": agents,
+            "count": len(agents),
+            "version": "v2"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/workflows")
+async def list_workflows():
+    """List predefined workflows"""
+    try:
+        workflows = {
+            "full_stack": {
+                "name": "Full-Stack Application",
+                "description": "Complete frontend + backend + database + deployment",
+                "agents": WorkflowPresets.get_workflow("full_stack"),
+                "estimated_time": "5-10 minutes",
+                "best_for": ["Web apps", "SaaS products", "Dashboards"]
+            },
+            "frontend_only": {
+                "name": "Frontend Application",
+                "description": "React/Vue frontend with deployment",
+                "agents": WorkflowPresets.get_workflow("frontend_only"),
+                "estimated_time": "3-5 minutes",
+                "best_for": ["Landing pages", "Static sites", "SPAs"]
+            },
+            "backend_api": {
+                "name": "Backend API",
+                "description": "RESTful API with database and auth",
+                "agents": WorkflowPresets.get_workflow("backend_api"),
+                "estimated_time": "3-5 minutes",
+                "best_for": ["APIs", "Microservices", "Mobile backends"]
+            },
+            "landing_page": {
+                "name": "Landing Page",
+                "description": "Marketing/landing page with design",
+                "agents": WorkflowPresets.get_workflow("landing_page"),
+                "estimated_time": "2-3 minutes",
+                "best_for": ["Marketing sites", "Product launches", "Portfolios"]
+            }
+        }
+        
+        return {"workflows": workflows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/validate")
+async def validate_code(request: dict):
+    """
+    Validate code without generating it.
+    
+    Request:
+    {
+        "files": {"src/App.tsx": "...", "main.py": "..."},
+        "language": "Python|TypeScript",
+        "validate_build": true
+    }
+    """
+    try:
+        files = request.get("files", {})
+        language = request.get("language", "Python")
+        validate_build = request.get("validate_build", False)
+        
+        executor = CodeExecutor()
+        
+        if validate_build:
+            if language in ["TypeScript", "JavaScript", "React", "Vue"]:
+                result = await executor.validate_frontend(files, "React")
+            else:
+                result = await executor.validate_backend(files, language)
+        else:
+            # Just syntax check
+            from syntax_validator import SyntaxValidator
+            validator = SyntaxValidator()
+            
+            if language == "Python":
+                main_file = list(files.values())[0] if files else ""
+                result = validator.validate_python(main_file)
+            else:
+                main_file = list(files.values())[0] if files else ""
+                result = validator.validate_javascript(main_file)
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/score")
+async def score_code(request: dict):
+    """
+    Score code quality.
+    
+    Request:
+    {
+        "files": {"src/App.tsx": "...", "main.py": "..."},
+        "language": "Python"
+    }
+    """
+    try:
+        files = request.get("files", {})
+        language = request.get("language", "Python")
+        
+        scorer = QualityScorer()
+        result = scorer.score_code(files, language)
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
