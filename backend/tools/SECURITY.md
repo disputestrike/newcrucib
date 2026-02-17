@@ -179,6 +179,24 @@ Security considerations are documented in:
 - This file - Security summary
 - Inline code comments for security-critical functions
 
+## Dependency Security
+
+### Patched Vulnerabilities
+
+**aiomysql**: Upgraded from 0.2.0 to 0.3.0
+- **CVE**: Arbitrary access to client files through vulnerability of a malicious MySQL server
+- **Affected versions**: <= 0.2.0
+- **Patched version**: 0.3.0
+- **Status**: ✓ Fixed
+
+### Dependency Versions
+
+All dependencies use secure, patched versions:
+- `playwright==1.40.0` - Browser automation
+- `asyncpg==0.29.0` - PostgreSQL driver
+- `aiomysql==0.3.0` - MySQL driver (patched)
+- `aiosqlite==0.19.0` - SQLite driver
+
 ## Conclusion
 
 All identified security vulnerabilities from the code review have been addressed with appropriate mitigations. The implementation follows security best practices including:
@@ -187,5 +205,6 @@ All identified security vulnerabilities from the code review have been addressed
 - Defense in depth
 - Fail-safe defaults
 - Documentation and warnings
+- Secure dependency versions
 
 The tool agents are ready for use with appropriate security controls in place.

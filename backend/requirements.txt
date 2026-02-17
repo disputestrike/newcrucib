@@ -131,5 +131,5 @@ zipp==3.23.0
 # Phase 3: Tool Agents dependencies
 playwright==1.40.0
 asyncpg==0.29.0
-aiomysql==0.2.0
+aiomysql==0.3.0
 aiosqlite==0.19.0
