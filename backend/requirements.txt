@@ -1,4 +1,9 @@
 # Voice and LLM use only: openai, anthropic, google-generativeai. Do NOT install emergentintegrations or litellm.
+# Tool agents dependencies
+playwright==1.48.0
+asyncpg==0.30.0
+aiomysql==0.2.0
+aiosqlite==0.20.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
 aiosignal==1.4.0

@@ -71,6 +71,15 @@ try:
 except ImportError:
     legal_check_request = None
 try:
+    from tools.browser_agent import BrowserAgent
+    from tools.file_agent import FileAgent
+    from tools.api_agent import APIAgent
+    from tools.database_operations_agent import DatabaseOperationsAgent
+    from tools.deployment_operations_agent import DeploymentOperationsAgent
+except ImportError:
+    BrowserAgent = FileAgent = APIAgent = None
+    DatabaseOperationsAgent = DeploymentOperationsAgent = None
+try:
     from utils.audit_log import AuditLogger
     from utils.rbac import has_permission, Permission, get_user_role
 except ImportError:
@@ -4334,6 +4343,48 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Request-ID"],
 )
+
+# ===== Tool Agent Endpoints =====
+
+@app.post("/api/tools/browser")
+async def use_browser_tool(request: dict):
+    """Execute browser action"""
+    if not BrowserAgent:
+        raise HTTPException(status_code=501, detail="BrowserAgent not available")
+    agent = BrowserAgent(llm_client=None, config={})
+    return await agent.run(request)
+
+@app.post("/api/tools/file")
+async def use_file_tool(request: dict):
+    """Execute file operation"""
+    if not FileAgent:
+        raise HTTPException(status_code=501, detail="FileAgent not available")
+    agent = FileAgent(llm_client=None, config={"workspace": "./workspace"})
+    return await agent.run(request)
+
+@app.post("/api/tools/api")
+async def use_api_tool(request: dict):
+    """Make HTTP request"""
+    if not APIAgent:
+        raise HTTPException(status_code=501, detail="APIAgent not available")
+    agent = APIAgent(llm_client=None, config={})
+    return await agent.run(request)
+
+@app.post("/api/tools/database")
+async def use_database_tool(request: dict):
+    """Execute SQL query"""
+    if not DatabaseOperationsAgent:
+        raise HTTPException(status_code=501, detail="DatabaseOperationsAgent not available")
+    agent = DatabaseOperationsAgent(llm_client=None, config={})
+    return await agent.run(request)
+
+@app.post("/api/tools/deploy")
+async def use_deployment_tool(request: dict):
+    """Deploy application"""
+    if not DeploymentOperationsAgent:
+        raise HTTPException(status_code=501, detail="DeploymentOperationsAgent not available")
+    agent = DeploymentOperationsAgent(llm_client=None, config={})
+    return await agent.run(request)
 
 @app.on_event("startup")
 async def seed_examples_if_empty():
