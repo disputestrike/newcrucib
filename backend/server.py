@@ -4253,6 +4253,102 @@ async def design_from_url(url: str = Form(...), user: dict = Depends(get_optiona
         logger.error(f"Design from URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== TOOL AGENTS ====================
+
+@api_router.post("/tools/browser")
+async def use_browser_tool(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Use browser automation tool.
+    
+    Examples:
+    - {"action": "screenshot", "url": "https://example.com"}
+    - {"action": "scrape", "url": "https://example.com", "selector": ".content"}
+    - {"action": "navigate", "url": "https://example.com"}
+    - {"action": "extract", "url": "https://example.com", "extract_type": "links"}
+    """
+    try:
+        from backend.agents.tools.browser_agent import BrowserAgent
+        agent = BrowserAgent(llm_client=None, config={})
+        result = await agent.run(request)
+        return result
+    except Exception as e:
+        logger.error(f"Browser tool error: {e}")
+        return {"success": False, "error": str(e)}
+
+@api_router.post("/tools/file")
+async def use_file_tool(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    File system operations.
+    
+    Examples:
+    - {"action": "read", "path": "README.md"}
+    - {"action": "write", "path": "test.txt", "content": "Hello"}
+    - {"action": "list", "path": "."}
+    - {"action": "exists", "path": "test.txt"}
+    """
+    try:
+        from backend.agents.tools.file_agent import FileAgent
+        agent = FileAgent(llm_client=None, config={"workspace_dir": "./workspace"})
+        result = await agent.run(request)
+        return result
+    except Exception as e:
+        logger.error(f"File tool error: {e}")
+        return {"success": False, "error": str(e)}
+
+@api_router.post("/tools/api")
+async def use_api_tool(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Make HTTP API calls.
+    
+    Examples:
+    - {"url": "https://api.github.com/repos/facebook/react", "method": "GET"}
+    - {"url": "https://httpbin.org/post", "method": "POST", "data": {"key": "value"}}
+    """
+    try:
+        from backend.agents.tools.api_agent import APIAgent
+        agent = APIAgent(llm_client=None, config={})
+        result = await agent.run(request)
+        return result
+    except Exception as e:
+        logger.error(f"API tool error: {e}")
+        return {"success": False, "error": str(e)}
+
+@api_router.post("/tools/database")
+async def use_database_tool(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Execute database operations.
+    
+    Examples:
+    - {"action": "query", "query": "SELECT * FROM users LIMIT 10", "database_url": "sqlite:///./test.db"}
+    - {"action": "execute", "query": "INSERT INTO users (name) VALUES ('John')", "database_url": "sqlite:///./test.db"}
+    """
+    try:
+        from backend.agents.tools.database_operations_agent import DatabaseOperationsAgent
+        agent = DatabaseOperationsAgent(llm_client=None, config={})
+        result = await agent.run(request)
+        return result
+    except Exception as e:
+        logger.error(f"Database tool error: {e}")
+        return {"success": False, "error": str(e)}
+
+@api_router.post("/tools/deploy")
+async def use_deployment_tool(request: dict, user: dict = Depends(get_optional_user)):
+    """
+    Deploy application.
+    
+    Examples:
+    - {"platform": "vercel", "files": {"index.html": "..."}, "api_key": "...", "project_name": "my-app"}
+    - {"platform": "netlify", "files": {"index.html": "..."}, "api_key": "..."}
+    """
+    try:
+        from backend.agents.tools.deployment_operations_agent import DeploymentOperationsAgent
+        agent = DeploymentOperationsAgent(llm_client=None, config={})
+        result = await agent.run(request)
+        return result
+    except Exception as e:
+        logger.error(f"Deployment tool error: {e}")
+        return {"success": False, "error": str(e)}
+
 # ==================== AGENT ACTIVITY (for Agents panel) ====================
 
 @api_router.get("/agents/activity")
