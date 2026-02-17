@@ -12,6 +12,11 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 
+# Constants for self-improvement scoring
+DURATION_PENALTY_DIVISOR = 10000  # Divisor for duration penalty calculation
+MAX_DURATION_PENALTY = 0.5  # Maximum penalty for slow execution
+MIN_EXECUTIONS_FOR_BEST = 10  # Minimum executions required to consider variant
+
 @dataclass
 class PromptVariant:
     """A/B test variant of agent prompt"""
@@ -103,9 +108,9 @@ class SelfImprovement:
         
         # Score = quality * success_rate - (duration penalty)
         def score(v: PromptVariant) -> float:
-            if v.executions < 10:  # Need minimum data
+            if v.executions < MIN_EXECUTIONS_FOR_BEST:  # Need minimum data
                 return 0
-            duration_penalty = min(v.avg_duration_ms / 10000, 0.5)  # Cap penalty
+            duration_penalty = min(v.avg_duration_ms / DURATION_PENALTY_DIVISOR, MAX_DURATION_PENALTY)
             return v.avg_quality_score * v.success_rate - duration_penalty
         
         return max(variants, key=score)

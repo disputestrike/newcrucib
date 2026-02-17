@@ -131,11 +131,38 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize enterprise systems
-marketplace = AgentMarketplace() if AgentMarketplace else None
-team_memory = TeamMemory() if TeamMemory else None
-dashboard = AgentDashboard() if AgentDashboard else None
-self_improvement = SelfImprovement() if SelfImprovement else None
+# Initialize enterprise systems with error handling
+try:
+    marketplace = AgentMarketplace() if AgentMarketplace else None
+    if marketplace:
+        logger.info("Agent Marketplace initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Agent Marketplace: {e}")
+    marketplace = None
+
+try:
+    team_memory = TeamMemory() if TeamMemory else None
+    if team_memory:
+        logger.info("Team Memory initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Team Memory: {e}")
+    team_memory = None
+
+try:
+    dashboard = AgentDashboard() if AgentDashboard else None
+    if dashboard:
+        logger.info("Agent Dashboard initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Agent Dashboard: {e}")
+    dashboard = None
+
+try:
+    self_improvement = SelfImprovement() if SelfImprovement else None
+    if self_improvement:
+        logger.info("Self-Improvement System initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Self-Improvement System: {e}")
+    self_improvement = None
 
 # ==================== MODELS ====================
 

@@ -122,7 +122,7 @@ for dir_path in ["./test_marketplace", "./test_team_memory", "./marketplace_agen
     if os.path.exists(dir_path):
         try:
             shutil.rmtree(dir_path)
-        except:
-            pass
+        except (OSError, PermissionError) as e:
+            print(f"Warning: Could not remove {dir_path}: {e}")
 
 print("\nTest directories cleaned up.")

@@ -165,8 +165,12 @@ class AgentMarketplace:
         if not agent:
             return {"success": False, "error": "Agent not found"}
         
-        # Simple average (in production, track individual ratings)
-        agent.rating = (agent.rating + rating) / 2
+        # Calculate new average rating
+        # In production, track individual ratings in a separate collection
+        # For now, use running average: new_avg = (old_avg * count + new_rating) / (count + 1)
+        # We approximate count from downloads assuming some download/rate ratio
+        estimated_ratings = max(1, agent.downloads // 10)  # Assume 1 rating per 10 downloads
+        agent.rating = (agent.rating * estimated_ratings + rating) / (estimated_ratings + 1)
         self._save_agent(agent)
         
         return {

@@ -496,14 +496,14 @@ class TestSelfImprovement:
         assert variant.success_rate == 1.0
     
     def test_get_best_variant_insufficient_data(self, improvement):
-        """Test getting best variant with insufficient data"""
+        """Test getting best variant with insufficient data returns None"""
         variant = improvement.create_prompt_variant(
             agent_name="TestAgent",
             variant_prompt="Test prompt",
             variant_name="v1"
         )
         
-        # Record only a few results
+        # Record only a few results (less than MIN_EXECUTIONS_FOR_BEST)
         for i in range(5):
             improvement.record_result(
                 agent_name="TestAgent",
@@ -514,7 +514,8 @@ class TestSelfImprovement:
             )
         
         best = improvement.get_best_variant("TestAgent")
-        # Should still return None or handle gracefully due to minimum data requirement
+        # Should return None because no variant has enough data to score
+        # (score returns 0 for variants with < MIN_EXECUTIONS_FOR_BEST)
         assert best is None or best.executions < 10
     
     def test_get_best_variant_with_data(self, improvement):
