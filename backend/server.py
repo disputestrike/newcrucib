@@ -78,6 +78,21 @@ except ImportError:
     has_permission = lambda u, p: True
     Permission = None
     get_user_role = lambda u: "owner"
+# Phase 4: Enterprise Features
+try:
+    from marketplace.agent_store import AgentMarketplace, CustomAgentDefinition
+    from memory.team_memory import TeamMemory, BuildHistory
+    from observability.dashboard import Dashboard
+    from optimization.self_improvement import SelfImprovement
+except ImportError as e:
+    import logging
+    logging.warning(f"Enterprise features not available: {e}")
+    AgentMarketplace = None
+    CustomAgentDefinition = None
+    TeamMemory = None
+    BuildHistory = None
+    Dashboard = None
+    SelfImprovement = None
 import hashlib
 import pyotp
 import qrcode
@@ -105,6 +120,12 @@ def decode_mfa_temp_token(token: str) -> dict:
 app = FastAPI(title="CrucibAI Platform")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
+
+# Phase 4: Enterprise Features - Initialize systems
+marketplace = AgentMarketplace() if AgentMarketplace else None
+team_memory = TeamMemory() if TeamMemory else None
+dashboard = Dashboard() if Dashboard else None
+self_improvement = SelfImprovement() if SelfImprovement else None
 
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
@@ -4320,6 +4341,149 @@ async def websocket_project_progress(websocket: WebSocket, project_id: str):
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         pass
+
+# ==================== PHASE 4: ENTERPRISE FEATURES ====================
+
+# Marketplace endpoints
+@api_router.post("/marketplace/publish")
+async def publish_agent(request: dict):
+    """Publish custom agent to marketplace"""
+    if not marketplace:
+        raise HTTPException(status_code=501, detail="Marketplace not available")
+    
+    try:
+        definition = CustomAgentDefinition(**request)
+        return marketplace.publish_agent(definition)
+    except Exception as e:
+        logger.error(f"Error publishing agent: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.post("/marketplace/install/{agent_name}")
+async def install_agent(agent_name: str):
+    """Install agent from marketplace"""
+    if not marketplace:
+        raise HTTPException(status_code=501, detail="Marketplace not available")
+    
+    try:
+        return marketplace.install_agent(agent_name)
+    except Exception as e:
+        logger.error(f"Error installing agent: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.get("/marketplace/agents")
+async def list_marketplace_agents(category: str = None):
+    """List marketplace agents"""
+    if not marketplace:
+        raise HTTPException(status_code=501, detail="Marketplace not available")
+    
+    try:
+        return {"agents": marketplace.list_agents(category)}
+    except Exception as e:
+        logger.error(f"Error listing agents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/marketplace/rate/{agent_name}")
+async def rate_agent(agent_name: str, rating: float):
+    """Rate an agent (1-5 stars)"""
+    if not marketplace:
+        raise HTTPException(status_code=501, detail="Marketplace not available")
+    
+    if rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    
+    try:
+        return marketplace.rate_agent(agent_name, rating)
+    except Exception as e:
+        logger.error(f"Error rating agent: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Team memory endpoints
+@api_router.get("/memory/suggest-stack")
+async def suggest_stack(prompt: str, team_id: str):
+    """Get stack suggestion based on team history"""
+    if not team_memory:
+        raise HTTPException(status_code=501, detail="Team memory not available")
+    
+    try:
+        return team_memory.suggest_stack(prompt, team_id)
+    except Exception as e:
+        logger.error(f"Error suggesting stack: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/memory/insights/{team_id}")
+async def get_team_insights(team_id: str):
+    """Get team insights and recommendations"""
+    if not team_memory:
+        raise HTTPException(status_code=501, detail="Team memory not available")
+    
+    try:
+        return team_memory.get_insights(team_id)
+    except Exception as e:
+        logger.error(f"Error getting insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/memory/record-build")
+async def record_build(build: dict):
+    """Record a build in team memory"""
+    if not team_memory:
+        raise HTTPException(status_code=501, detail="Team memory not available")
+    
+    try:
+        build_history = BuildHistory(**build)
+        team_memory.record_build(build_history)
+        return {"success": True, "message": "Build recorded successfully"}
+    except Exception as e:
+        logger.error(f"Error recording build: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Dashboard endpoint
+@api_router.get("/dashboard")
+async def get_dashboard():
+    """Get real-time dashboard data"""
+    if not dashboard:
+        raise HTTPException(status_code=501, detail="Dashboard not available")
+    
+    try:
+        return dashboard.get_dashboard_data()
+    except Exception as e:
+        logger.error(f"Error getting dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Self-improvement endpoints
+@api_router.get("/optimization/report")
+async def get_optimization_report():
+    """Get self-improvement optimization report"""
+    if not self_improvement:
+        raise HTTPException(status_code=501, detail="Self-improvement not available")
+    
+    try:
+        return self_improvement.get_optimization_report()
+    except Exception as e:
+        logger.error(f"Error getting optimization report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/optimization/best-prompts")
+async def get_best_prompts():
+    """Get best performing prompts for each agent"""
+    if not self_improvement:
+        raise HTTPException(status_code=501, detail="Self-improvement not available")
+    
+    try:
+        best = self_improvement.get_best_prompts()
+        return {
+            "best_prompts": {
+                agent: {
+                    "prompt": variant.prompt,
+                    "score": variant.score,
+                    "executions": variant.executions,
+                    "success_rate": variant.success_rate
+                }
+                for agent, variant in best.items()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting best prompts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Add security and performance middleware (order matters - added in reverse)
 app.add_middleware(PerformanceMonitoringMiddleware)
