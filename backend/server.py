@@ -82,6 +82,18 @@ import hashlib
 import pyotp
 import qrcode
 
+# Phase 4: Enterprise Features
+try:
+    from marketplace.agent_marketplace import AgentMarketplace
+    from learning.team_memory import TeamMemory
+    from observability.agent_dashboard import AgentDashboard
+    from learning.self_improvement import SelfImprovement
+except ImportError:
+    AgentMarketplace = None
+    TeamMemory = None
+    AgentDashboard = None
+    SelfImprovement = None
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -118,6 +130,12 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Initialize enterprise systems
+marketplace = AgentMarketplace() if AgentMarketplace else None
+team_memory = TeamMemory() if TeamMemory else None
+dashboard = AgentDashboard() if AgentDashboard else None
+self_improvement = SelfImprovement() if SelfImprovement else None
 
 # ==================== MODELS ====================
 
@@ -4404,6 +4422,150 @@ async def seed_examples_if_empty():
             logger.info("Seeded 5 examples: todo-app, blog-platform, ecommerce-store, project-management, analytics-dashboard")
     except Exception as e:
         logger.warning(f"Seed examples: {e}")
+
+# ==================== PHASE 4: ENTERPRISE FEATURES ====================
+
+# Agent Marketplace endpoints
+@api_router.post("/marketplace/create-agent")
+async def create_custom_agent(request: dict):
+    """Create custom agent"""
+    if not marketplace:
+        raise HTTPException(status_code=503, detail="Marketplace not available")
+    
+    try:
+        agent = marketplace.create_agent(
+            name=request["name"],
+            description=request["description"],
+            author=request["author"],
+            category=request["category"],
+            system_prompt=request["system_prompt"],
+            input_schema=request.get("input_schema", {}),
+            output_schema=request.get("output_schema", {})
+        )
+        return {"success": True, "agent_id": agent.id}
+    except Exception as e:
+        logger.error(f"Error creating agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/marketplace/search")
+async def search_marketplace(query: Optional[str] = None, category: Optional[str] = None, min_rating: float = 0.0):
+    """Search marketplace agents"""
+    if not marketplace:
+        raise HTTPException(status_code=503, detail="Marketplace not available")
+    
+    try:
+        agents = marketplace.search_agents(query, category, min_rating)
+        return {"agents": [a.to_dict() for a in agents]}
+    except Exception as e:
+        logger.error(f"Error searching marketplace: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/marketplace/install/{agent_id}")
+async def install_marketplace_agent(agent_id: str, user_id: str):
+    """Install agent from marketplace"""
+    if not marketplace:
+        raise HTTPException(status_code=503, detail="Marketplace not available")
+    
+    try:
+        result = marketplace.install_agent(agent_id, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error installing agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/marketplace/rate/{agent_id}")
+async def rate_agent(agent_id: str, rating: float, user_id: str):
+    """Rate an agent"""
+    if not marketplace:
+        raise HTTPException(status_code=503, detail="Marketplace not available")
+    
+    try:
+        result = marketplace.rate_agent(agent_id, rating, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error rating agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Team Memory endpoints
+@api_router.get("/team/insights/{team_id}")
+async def get_team_insights(team_id: str):
+    """Get team build insights"""
+    if not team_memory:
+        raise HTTPException(status_code=503, detail="Team memory not available")
+    
+    try:
+        insights = team_memory.get_team_insights(team_id)
+        return insights
+    except Exception as e:
+        logger.error(f"Error getting team insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/team/suggest-stack/{team_id}")
+async def suggest_stack(team_id: str, prompt: str):
+    """Suggest tech stack based on team history"""
+    if not team_memory:
+        raise HTTPException(status_code=503, detail="Team memory not available")
+    
+    try:
+        suggestion = team_memory.suggest_stack(team_id, prompt)
+        return suggestion
+    except Exception as e:
+        logger.error(f"Error suggesting stack: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/team/recommendations/{team_id}")
+async def get_team_recommendations(team_id: str):
+    """Get improvement recommendations for team"""
+    if not team_memory:
+        raise HTTPException(status_code=503, detail="Team memory not available")
+    
+    try:
+        recommendations = team_memory.get_improvement_recommendations(team_id)
+        return {"recommendations": recommendations}
+    except Exception as e:
+        logger.error(f"Error getting recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Observability Dashboard endpoints
+@api_router.get("/dashboard/agents")
+async def get_agent_dashboard(hours: int = 24):
+    """Get agent performance dashboard"""
+    if not dashboard:
+        raise HTTPException(status_code=503, detail="Dashboard not available")
+    
+    try:
+        data = dashboard.get_dashboard_data(hours)
+        return data
+    except Exception as e:
+        logger.error(f"Error getting dashboard data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Self-Improvement endpoints
+@api_router.post("/improve/test-variant")
+async def test_prompt_variant(agent_name: str, variant_prompt: str, variant_name: str = "variant_a"):
+    """Create new prompt variant for testing"""
+    if not self_improvement:
+        raise HTTPException(status_code=503, detail="Self-improvement not available")
+    
+    try:
+        variant = self_improvement.create_prompt_variant(agent_name, variant_prompt, variant_name)
+        return {"variant_id": variant.variant_id}
+    except Exception as e:
+        logger.error(f"Error creating variant: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/improve/report/{agent_name}")
+async def get_improvement_report(agent_name: str):
+    """Get improvement report for agent"""
+    if not self_improvement:
+        raise HTTPException(status_code=503, detail="Self-improvement not available")
+    
+    try:
+        report = self_improvement.generate_improvement_report(agent_name)
+        return report
+    except Exception as e:
+        logger.error(f"Error getting improvement report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
