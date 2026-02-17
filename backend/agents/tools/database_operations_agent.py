@@ -46,37 +46,38 @@ class DatabaseOperationsAgent(BaseAgent):
             Session = sessionmaker(bind=engine)
             session = Session()
             
-            if action == "query":
-                result = session.execute(text(query))
-                rows = [dict(row._mapping) for row in result]
+            try:
+                if action == "query":
+                    result = session.execute(text(query))
+                    rows = [dict(row._mapping) for row in result]
+                    
+                    return {
+                        "success": True,
+                        "rows": rows,
+                        "count": len(rows)
+                    }
                 
-                return {
-                    "success": True,
-                    "rows": rows,
-                    "count": len(rows)
-                }
-            
-            elif action == "execute":
-                result = session.execute(text(query))
-                session.commit()
+                elif action == "execute":
+                    result = session.execute(text(query))
+                    session.commit()
+                    
+                    return {
+                        "success": True,
+                        "rows_affected": result.rowcount
+                    }
                 
-                return {
-                    "success": True,
-                    "rows_affected": result.rowcount
-                }
-            
-            elif action == "create_table":
-                schema = context.get("schema")
-                # Execute CREATE TABLE statement
-                session.execute(text(schema))
-                session.commit()
-                
-                return {
-                    "success": True,
-                    "table_created": True
-                }
-            
-            session.close()
+                elif action == "create_table":
+                    schema = context.get("schema")
+                    # Execute CREATE TABLE statement
+                    session.execute(text(schema))
+                    session.commit()
+                    
+                    return {
+                        "success": True,
+                        "table_created": True
+                    }
+            finally:
+                session.close()
         
         except Exception as e:
             return {

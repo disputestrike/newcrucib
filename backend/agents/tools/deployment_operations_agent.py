@@ -39,7 +39,7 @@ class DeploymentOperationsAgent(BaseAgent):
         platform = context["platform"]
         files = context["files"]
         api_key = context.get("api_key")
-        project_name = context.get("project_name", "newcrucib-app")
+        project_name = context.get("project_name", "crucibai-app")
         
         try:
             if platform == "vercel":

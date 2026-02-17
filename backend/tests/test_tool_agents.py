@@ -170,6 +170,36 @@ async def test_api_agent_post():
         assert result["status_code"] == 200
 
 
+@pytest.mark.asyncio
+async def test_api_agent_ssrf_protection():
+    """Test APIAgent SSRF protection"""
+    agent = APIAgent(llm_client=None, config={})
+    
+    # Test localhost blocking
+    result = await agent.run({
+        "url": "http://localhost:8080/admin",
+        "method": "GET"
+    })
+    assert result["success"] is False
+    assert "unsafe URL" in result["error"]
+    
+    # Test private IP blocking
+    result = await agent.run({
+        "url": "http://192.168.1.1/admin",
+        "method": "GET"
+    })
+    assert result["success"] is False
+    assert "unsafe URL" in result["error"]
+    
+    # Test metadata endpoint blocking
+    result = await agent.run({
+        "url": "http://169.254.169.254/latest/meta-data/",
+        "method": "GET"
+    })
+    assert result["success"] is False
+    assert "unsafe URL" in result["error"]
+
+
 # ==================== Database Agent Tests ====================
 
 @pytest.mark.asyncio
