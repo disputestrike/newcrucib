@@ -4,8 +4,8 @@ Can execute SQL queries, create tables, manage data.
 """
 
 from typing import Dict, Any
-from backend.agents.base_agent import BaseAgent, AgentValidationError
-from backend.agents.registry import AgentRegistry
+from ..base_agent import BaseAgent, AgentValidationError
+from ..registry import AgentRegistry
 
 
 @AgentRegistry.register

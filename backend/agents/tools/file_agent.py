@@ -7,8 +7,8 @@ from typing import Dict, Any
 import os
 from pathlib import Path
 import shutil
-from backend.agents.base_agent import BaseAgent, AgentValidationError
-from backend.agents.registry import AgentRegistry
+from ..base_agent import BaseAgent, AgentValidationError
+from ..registry import AgentRegistry
 
 
 @AgentRegistry.register

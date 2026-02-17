@@ -2,11 +2,17 @@
 Tests for tool agents: browser, file, api, database, deployment.
 """
 import pytest
-from backend.agents.tools.browser_agent import BrowserAgent
-from backend.agents.tools.file_agent import FileAgent
-from backend.agents.tools.api_agent import APIAgent
-from backend.agents.tools.database_operations_agent import DatabaseOperationsAgent
-from backend.agents.tools.deployment_operations_agent import DeploymentOperationsAgent
+import sys
+from pathlib import Path
+
+# Add backend directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from agents.tools.browser_agent import BrowserAgent
+from agents.tools.file_agent import FileAgent
+from agents.tools.api_agent import APIAgent
+from agents.tools.database_operations_agent import DatabaseOperationsAgent
+from agents.tools.deployment_operations_agent import DeploymentOperationsAgent
 
 
 # ==================== Browser Agent Tests ====================
@@ -229,7 +235,13 @@ async def test_deployment_agent_unsupported_platform():
 
 def test_agent_registry():
     """Test that agents are registered"""
-    from backend.agents.registry import AgentRegistry
+    # Import agents to trigger registration
+    from agents.tools.browser_agent import BrowserAgent
+    from agents.tools.file_agent import FileAgent
+    from agents.tools.api_agent import APIAgent
+    from agents.tools.database_operations_agent import DatabaseOperationsAgent
+    from agents.tools.deployment_operations_agent import DeploymentOperationsAgent
+    from agents.registry import AgentRegistry
     
     agents = AgentRegistry.list_agents()
     

@@ -5,8 +5,8 @@ Can deploy to Vercel, Railway, Netlify, Fly.io.
 
 from typing import Dict, Any
 import httpx
-from backend.agents.base_agent import BaseAgent, AgentValidationError
-from backend.agents.registry import AgentRegistry
+from ..base_agent import BaseAgent, AgentValidationError
+from ..registry import AgentRegistry
 
 
 @AgentRegistry.register
