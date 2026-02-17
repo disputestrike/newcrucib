@@ -13,6 +13,7 @@ from playwright.async_api import async_playwright, Browser, Page
 from typing import Dict, Any, List
 import base64
 from pathlib import Path
+from urllib.parse import urlparse
 from .base_agent import BaseAgent
 
 
@@ -24,6 +25,33 @@ class BrowserAgent(BaseAgent):
         self.name = "BrowserAgent"
         self.browser: Browser = None
         self.page: Page = None
+        # Allowed URL schemes for security
+        self.allowed_schemes = config.get("allowed_schemes", ["http", "https"])
+    
+    def _validate_url(self, url: str) -> bool:
+        """Validate URL to prevent SSRF attacks"""
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in self.allowed_schemes:
+                raise ValueError(f"URL scheme '{parsed.scheme}' not allowed")
+            # Prevent access to private IP ranges
+            if parsed.hostname in ["localhost", "127.0.0.1", "0.0.0.0"]:
+                raise ValueError("Access to localhost is not allowed")
+            if parsed.hostname and parsed.hostname.startswith("192.168."):
+                raise ValueError("Access to private IP ranges is not allowed")
+            if parsed.hostname and parsed.hostname.startswith("10."):
+                raise ValueError("Access to private IP ranges is not allowed")
+            return True
+        except Exception as e:
+            raise ValueError(f"Invalid URL: {e}")
+    
+    def _validate_path(self, path: str) -> Path:
+        """Validate file path to prevent path traversal"""
+        resolved = Path(path).resolve()
+        # Ensure path doesn't contain parent directory references
+        if ".." in path:
+            raise ValueError("Path traversal detected")
+        return resolved
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -40,30 +68,38 @@ class BrowserAgent(BaseAgent):
         """
         action = context.get("action", "navigate")
         
-        async with async_playwright() as p:
-            self.browser = await p.chromium.launch(headless=True)
-            self.page = await self.browser.new_page()
+        try:
+            # Validate URL for all actions that use it
+            url = context.get("url")
+            if url:
+                self._validate_url(url)
             
-            try:
-                if action == "navigate":
-                    result = await self._navigate(context)
-                elif action == "screenshot":
-                    result = await self._screenshot(context)
-                elif action == "scrape":
-                    result = await self._scrape(context)
-                elif action == "fill_form":
-                    result = await self._fill_form(context)
-                elif action == "click":
-                    result = await self._click(context)
-                else:
-                    result = {"error": f"Unknown action: {action}"}
+            async with async_playwright() as p:
+                self.browser = await p.chromium.launch(headless=True)
+                self.page = await self.browser.new_page()
                 
-                await self.browser.close()
-                return result
-                
-            except Exception as e:
-                await self.browser.close()
-                return {"error": str(e), "success": False}
+                try:
+                    if action == "navigate":
+                        result = await self._navigate(context)
+                    elif action == "screenshot":
+                        result = await self._screenshot(context)
+                    elif action == "scrape":
+                        result = await self._scrape(context)
+                    elif action == "fill_form":
+                        result = await self._fill_form(context)
+                    elif action == "click":
+                        result = await self._click(context)
+                    else:
+                        result = {"error": f"Unknown action: {action}"}
+                    
+                    await self.browser.close()
+                    return result
+                    
+                except Exception as e:
+                    await self.browser.close()
+                    return {"error": str(e), "success": False}
+        except ValueError as e:
+            return {"error": str(e), "success": False}
     
     async def _navigate(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Navigate to URL"""
@@ -83,10 +119,11 @@ class BrowserAgent(BaseAgent):
     async def _screenshot(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Take screenshot"""
         url = context.get("url")
-        path = context.get("screenshot_path", "screenshot.png")
+        path_str = context.get("screenshot_path", "screenshot.png")
+        path = self._validate_path(path_str)
         
         await self.page.goto(url)
-        await self.page.screenshot(path=path)
+        await self.page.screenshot(path=str(path))
         
         # Read and encode
         with open(path, 'rb') as f:
@@ -95,7 +132,7 @@ class BrowserAgent(BaseAgent):
         
         return {
             "url": url,
-            "screenshot_path": path,
+            "screenshot_path": str(path),
             "screenshot_base64": img_base64,
             "success": True
         }

@@ -208,9 +208,13 @@ async def test_database_agent_postgres_mock():
 # ==================== DeploymentOperationsAgent Tests ====================
 
 @pytest.mark.asyncio
-async def test_deployment_agent_vercel_mock():
+async def test_deployment_agent_vercel_mock(tmp_path):
     """Test DeploymentOperationsAgent with mocked Vercel"""
     agent = DeploymentOperationsAgent(llm_client=None, config={})
+    
+    # Create a temporary directory for the test
+    test_app = tmp_path / "test-app"
+    test_app.mkdir()
     
     with patch('tools.deployment_operations_agent.subprocess.run') as mock_run:
         mock_process = MagicMock()
@@ -221,7 +225,7 @@ async def test_deployment_agent_vercel_mock():
         
         result = await agent.execute({
             "platform": "vercel",
-            "project_path": "./test-app"
+            "project_path": str(test_app)
         })
         
         assert result["success"] is True

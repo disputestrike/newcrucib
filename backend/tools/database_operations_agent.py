@@ -1,6 +1,12 @@
 """
 Database Operations Agent - execute SQL queries.
 Supports PostgreSQL, MySQL, SQLite.
+
+SECURITY WARNING: This agent executes raw SQL queries. Use with caution.
+- Always use parameterized queries (pass params separately)
+- Never construct queries from untrusted user input
+- Validate database credentials before use
+- Limit database permissions to minimum required
 """
 
 import asyncpg
@@ -16,6 +22,8 @@ class DatabaseOperationsAgent(BaseAgent):
     def __init__(self, llm_client, config):
         super().__init__(llm_client, config)
         self.name = "DatabaseOperationsAgent"
+        # Optional: Add query allowlist or blocklist
+        self.dangerous_keywords = ["DROP", "TRUNCATE", "DELETE FROM", "UPDATE", "ALTER"]
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """

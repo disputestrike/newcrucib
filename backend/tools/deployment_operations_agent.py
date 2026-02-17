@@ -6,6 +6,7 @@ Supports: Vercel, Railway, Netlify
 import httpx
 import subprocess
 from typing import Dict, Any
+from pathlib import Path
 from .base_agent import BaseAgent
 
 
@@ -15,6 +16,18 @@ class DeploymentOperationsAgent(BaseAgent):
     def __init__(self, llm_client, config):
         super().__init__(llm_client, config)
         self.name = "DeploymentOperationsAgent"
+    
+    def _validate_path(self, path: str) -> Path:
+        """Validate project path to prevent command injection"""
+        resolved = Path(path).resolve()
+        if not resolved.exists():
+            raise ValueError(f"Path does not exist: {path}")
+        if not resolved.is_dir():
+            raise ValueError(f"Path is not a directory: {path}")
+        # Ensure path doesn't contain dangerous characters
+        if any(char in str(path) for char in [";", "&", "|", "`", "$", "(", ")"]):
+            raise ValueError("Path contains dangerous characters")
+        return resolved
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -46,10 +59,11 @@ class DeploymentOperationsAgent(BaseAgent):
     
     async def _deploy_vercel(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Deploy to Vercel"""
-        project_path = context.get("project_path")
+        project_path_str = context.get("project_path")
+        project_path = self._validate_path(project_path_str)
         
         # Use Vercel CLI
-        cmd = ["vercel", "--yes", "--cwd", project_path]
+        cmd = ["vercel", "--yes", "--cwd", str(project_path)]
         
         process = subprocess.run(cmd, capture_output=True, text=True)
         
@@ -73,10 +87,11 @@ class DeploymentOperationsAgent(BaseAgent):
     async def _deploy_railway(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Deploy to Railway"""
         # Railway deployment logic
-        project_path = context.get("project_path")
+        project_path_str = context.get("project_path")
+        project_path = self._validate_path(project_path_str)
         
         cmd = ["railway", "up", "--detach"]
-        process = subprocess.run(cmd, cwd=project_path, capture_output=True, text=True)
+        process = subprocess.run(cmd, cwd=str(project_path), capture_output=True, text=True)
         
         if process.returncode == 0:
             return {
@@ -92,9 +107,10 @@ class DeploymentOperationsAgent(BaseAgent):
     
     async def _deploy_netlify(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Deploy to Netlify"""
-        project_path = context.get("project_path")
+        project_path_str = context.get("project_path")
+        project_path = self._validate_path(project_path_str)
         
-        cmd = ["netlify", "deploy", "--prod", "--dir", project_path]
+        cmd = ["netlify", "deploy", "--prod", "--dir", str(project_path)]
         process = subprocess.run(cmd, capture_output=True, text=True)
         
         if process.returncode == 0:

@@ -54,7 +54,7 @@ class APIAgent(BaseAgent):
                 # Parse response
                 try:
                     data = response.json()
-                except:
+                except (ValueError, TypeError):
                     data = response.text
                 
                 return {
