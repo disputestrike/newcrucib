@@ -90,3 +90,10 @@ frontend/node_modules/.cache/default-development/2.pack_
 *.env
 *.env.*
 backend/logs/
+
+# Phase 4 Enterprise Features storage
+marketplace_agents/
+team_memory/
+test_marketplace/
+test_team_memory/
+
